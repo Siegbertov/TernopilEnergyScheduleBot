@@ -125,7 +125,6 @@ def __is_day_in_database(db_filename:str, day_name:str)->bool:
     return bool(__get_day_from_database(db_filename=db_filename, day_name=day_name))
 
 def __add_day_to_database(db_filename:str, day_name:str, groups:dict) ->None:
-    # TODO IMPLEMENT 
     if __is_day_in_database(db_filename=db_filename, day_name=day_name):
         db_day_tuple = __get_day_from_database(db_filename=db_filename, day_name=day_name)
         parsed_day = [day_name]
@@ -133,7 +132,6 @@ def __add_day_to_database(db_filename:str, day_name:str, groups:dict) ->None:
             parsed_day.append(group)
         parsed_day_tuple = tuple(parsed_day)
         if not (db_day_tuple == parsed_day_tuple):
-            # TODO DAY IN DB + DIFF DAYS
             connection = sqlite3.connect(db_filename)
             cursor = connection.cursor()
             cursor.execute(
@@ -148,7 +146,6 @@ def __add_day_to_database(db_filename:str, day_name:str, groups:dict) ->None:
         else:
             pass
     else:
-        # TODO DAY NOT IN DB
         connection = sqlite3.connect(db_filename)
         cursor = connection.cursor()
         cursor.execute(

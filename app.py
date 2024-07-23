@@ -4,7 +4,7 @@ import telebot
 from telebot import types
 from utils import scrapper, get_today_date_name, get_tomorrow_date_name
 from utils import create_users_table, __is_user_id_in_database, __add_user
-from utils import create_days_table, get_all_days_from_database, get_last_day_from_database, __add_day_to_database
+from utils import create_days_table, get_all_days_from_database, get_last_day_from_database, __add_day_to_database, __get_day_from_database
 
 
 def configure():
@@ -47,16 +47,36 @@ if __name__ == "__main__":
     @bot.message_handler(commands=['get_today'])
     def get_today(message):
         # TODO implement command /get_today
-        txt = get_today_date_name()
-        bot.send_message(message.chat.id, txt)
-        bot.send_message(message.chat.id, "Not Implemented....yet!")
+        day_name = get_today_date_name()
+        some_day = __get_day_from_database(db_filename=DATABASE_FILENAME, day_name=day_name)
+        if some_day:
+            d_n, g1, g2, g3, g4, g5, g6 = some_day
+            g_s = [g1, g2, g3, g4, g5, g6]
+            txt = f"*Графік на {d_n}:*"
+            for g in g_s:
+                txt = f"{txt} {g}"
+            txt = txt.replace("+", "\\+")
+            txt = txt.replace("-", "\\-")
+            bot.reply_to(message, txt, parse_mode='MarkdownV2') # FIXME edit later
+        else:
+            bot.reply_to(message, f"Графік на {day_name} відсутній! 😢") 
     
     @bot.message_handler(commands=['get_tomorrow'])
     def get_tomorrow(message):
         # TODO implement command /get_tomorrow
-        txt = get_tomorrow_date_name()
-        bot.send_message(message.chat.id, txt)
-        bot.send_message(message.chat.id, "Not Implemented....yet!")    
+        day_name = get_tomorrow_date_name()
+        some_day = __get_day_from_database(db_filename=DATABASE_FILENAME, day_name=day_name)
+        if some_day:
+            d_n, g1, g2, g3, g4, g5, g6 = some_day
+            g_s = [g1, g2, g3, g4, g5, g6]
+            txt = f"*Графік на {d_n}:*"
+            for g in g_s:
+                txt = f"{txt} {g}"
+            txt = txt.replace("+", "\\+")
+            txt = txt.replace("-", "\\-")
+            bot.reply_to(message, txt, parse_mode='MarkdownV2') # FIXME edit later
+        else:
+            bot.reply_to(message, f"Графік на {day_name} відсутній! 😢")     
 
     @bot.message_handler(commands=['get_last_available'])
     def get_last_available(message):
