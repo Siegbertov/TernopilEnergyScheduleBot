@@ -2,9 +2,12 @@ import os
 from dotenv import load_dotenv
 import telebot
 from telebot import types
-from utils import scrapper, get_today_date_name, get_tomorrow_date_name
-from utils import create_users_table, __is_user_id_in_database, __add_user
-from utils import create_days_table, get_all_days_from_database, get_last_day_from_database, __add_day_to_database, __get_day_from_database
+from utils import scrapper, get_today_name, get_tomorrow_name
+from db_day_handler import DB_Days
+from db_user_handler import DB_Users
+
+# from utils import create_users_table, __is_user_id_in_database, __add_user
+# from utils import create_days_table, get_all_days_from_database, get_last_day_from_database, __add_day_to_database, __get_day_from_database
 
 
 def configure():
@@ -12,29 +15,35 @@ def configure():
 
 
 if __name__ == "__main__":
+    # ENV VARIABLES
     configure()
-    DATABASE_FILENAME = "small_db.sql"
     TOKEN = os.getenv('TOKEN')
     MY_USER_ID = os.getenv('MY_USER_ID')
     LINK = os.getenv('LINK')
+
+    # DATABASE CREATION
+    DATABASE_FILENAME = "small_db.sql"
+    db_users = DB_Users(db_filename=DATABASE_FILENAME)
+    db_days = DB_Days(db_filename=DATABASE_FILENAME)
+    
+    # BOT CREATION
     bot = telebot.TeleBot(token=TOKEN)
 
     @bot.message_handler(commands=['start'])
     def start(message):
-        create_users_table(db_filename=DATABASE_FILENAME)
-        create_days_table(db_filename=DATABASE_FILENAME)
-        if not __is_user_id_in_database(db_filename=DATABASE_FILENAME, user_id=message.from_user.id):
-            __add_user(db_filename=DATABASE_FILENAME, user_id=message.from_user.id)
+        if not db_users.is_user_id_exists(user_id=message.from_user.id): 
+            db_users.add_user(user_id=message.from_user.id)
             bot.send_message(message.chat.id, f"ADDED USER <{message.from_user.id}>") # FIXME edit later
         else:
             bot.send_message(message.chat.id, f"USER <{message.from_user.id}> ALREADY EXISTS") # FIXME edit later
     
     @bot.message_handler(commands=['update'])
     def update(message):
-        if message.from_user.id == MY_USER_ID:
+        bot.send_message(message.chat.id, message.from_user.id)
+        if str(message.from_user.id) == str(MY_USER_ID):
             DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
             for day_name, groups in DAYS.items():
-                __add_day_to_database(db_filename=DATABASE_FILENAME, day_name=day_name, groups=groups)
+                db_days.add_day(day_name=day_name, groups=groups)
                 bot.send_message(message.chat.id, f"UPDATED: <{day_name}>") # FIXME edit later
         else:
             bot.send_message(message.chat.id, f"This command only for admins") # FIXME edit later
@@ -46,12 +55,11 @@ if __name__ == "__main__":
 
     @bot.message_handler(commands=['get_today'])
     def get_today(message):
-        # TODO implement command /get_today
-        day_name = get_today_date_name()
-        some_day = __get_day_from_database(db_filename=DATABASE_FILENAME, day_name=day_name)
-        if some_day:
-            d_n, g1, g2, g3, g4, g5, g6 = some_day
-            g_s = [g1, g2, g3, g4, g5, g6]
+        # TODO implement BEAUTIFUL command /get_today 
+        day_name = get_today_name()
+        db_day = db_days.get_day_by_name(day_name=day_name)
+        if db_day:
+            d_n, *g_s = db_day
             txt = f"*Графік на {d_n}:*"
             for g in g_s:
                 txt = f"{txt} {g}"
@@ -63,12 +71,11 @@ if __name__ == "__main__":
     
     @bot.message_handler(commands=['get_tomorrow'])
     def get_tomorrow(message):
-        # TODO implement command /get_tomorrow
-        day_name = get_tomorrow_date_name()
-        some_day = __get_day_from_database(db_filename=DATABASE_FILENAME, day_name=day_name)
-        if some_day:
-            d_n, g1, g2, g3, g4, g5, g6 = some_day
-            g_s = [g1, g2, g3, g4, g5, g6]
+        # TODO implement BEAUTIFUL command /get_tomorrow
+        day_name = get_tomorrow_name()
+        db_day = db_days.get_day_by_name(day_name=day_name)
+        if db_day:
+            d_n, *g_s = db_day
             txt = f"*Графік на {d_n}:*"
             for g in g_s:
                 txt = f"{txt} {g}"
@@ -80,9 +87,8 @@ if __name__ == "__main__":
 
     @bot.message_handler(commands=['get_last_available'])
     def get_last_available(message):
-        db_day = get_last_day_from_database(db_filename=DATABASE_FILENAME)
-        d_n, g1, g2, g3, g4, g5, g6 = db_day
-        g_s = [g1, g2, g3, g4, g5, g6]
+        db_day = db_days.get_all_days_from_database()[-1]
+        d_n, *g_s = db_day
         txt = f"*Графік на {d_n}:*"
         for g in g_s:
             txt = f"{txt} {g}"
