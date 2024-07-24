@@ -118,7 +118,6 @@ async def command_set_emoji_on(message: types.Message):
 
 @dp.message(Command('add_group'))
 async def command_add_group(message: types.Message):
-    #TODO implement add_group()
     groups = db_users.get_groups(user_id=message.from_user.id)
     groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
     content = formatting.Text(
@@ -134,7 +133,6 @@ async def command_add_group(message: types.Message):
 
 @dp.message(Command('remove_group'))
 async def command_remove_group(message: types.Message):
-    #TODO implement remove_group()
     content = formatting.Text(
             "<🆘Видалити групу🆘>",
             )
@@ -149,10 +147,17 @@ async def command_remove_group(message: types.Message):
 @dp.message(Command('set_view'))
 async def command_set_view(message: types.Message):
     #TODO implement set_view()
+    current_view = db_users.get_view(user_id=message.from_user.id)
     content = formatting.Text(
-            "<🆘Змінити вигляд🆘>",
+            formatting.Bold("🖼Вигляд"), " : ", formatting.Code(current_view)
             )
-    await message.answer(**content.as_kwargs())
+    kb = []
+    kb.append([types.KeyboardButton(text=f"Скасувати")])
+    for view in db_users.possible_views:
+        if view != current_view:
+            kb.append([types.KeyboardButton(text=view)])
+    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
+    await message.reply(**content.as_kwargs(), reply_markup=rkm)
 
 @dp.message(Command('set_total'))
 async def command_set_total(message: types.Message):
@@ -176,6 +181,9 @@ async def text_message(message: types.Message):
             db_users.remove_group(user_id=message.from_user.id, num_to_remove=txt[1])
             await message.reply(**content.as_kwargs())
             await command_remove_group(message=message)
+        case txt if txt in db_users.possible_views:
+            db_users.set_new_view(user_id=message.from_user.id, new_view=txt)
+            await command_set_view(message=message)
         case txt if txt in ["Скасувати"]:
             content = formatting.Text(
                     "❌",
