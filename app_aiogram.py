@@ -7,6 +7,8 @@ from aiogram.utils import formatting
 
 from db_day_handler import DB_Days
 from db_user_handler import DB_Users
+from utils import scrapper, get_today_name, get_tomorrow_name
+from datetime import datetime
 
 
 def configure():
@@ -21,20 +23,20 @@ def generate_settings_content(db, user_id:str):
         formatting.BotCommand("/change_auto_send"), " - ", formatting.Italic(f"{'ввімкнути' if auto_send else 'вимкнути'} авторозсилку"), "\n",
         "\n",
         formatting.Bold("🕯Емоджі відключення"), " : ", formatting.Code(f"{off_emoji}"), "\n",
-        formatting.BotCommand("/set_emoji_off"), " - ", formatting.Italic("text"), "\n",
+        formatting.BotCommand("/set_emoji_off"), " - ", formatting.Italic("встановитии новий emoji для відключення"), "\n",
         "\n",
         formatting.Bold("💡Емоджі включення"), " : ", formatting.Code(f"{on_emoji}"), "\n",
-        formatting.BotCommand("/set_emoji_on"), " - ", formatting.Italic("text"), "\n",
+        formatting.BotCommand("/set_emoji_on"), " - ", formatting.Italic("встановитии новий emoji для включення"), "\n",
         "\n",
         formatting.Bold("🔠Мої групи"), " : ", formatting.Code(f"[{groups_to_show_str}]"), "\n",
-        formatting.BotCommand("/add_group"), " - ", formatting.Italic("text"), "\n",
-        formatting.BotCommand("/remove_group"), " - ", formatting.Italic("text"), "\n",
+        formatting.BotCommand("/add_group"), " - ", formatting.Italic("добавити групу"), "\n",
+        formatting.BotCommand("/remove_group"), " - ", formatting.Italic("видалити групу"), "\n",
         "\n",
         formatting.Bold("🖼Вигляд"), " : ", formatting.Code(f"{view}"), "\n",
-        formatting.BotCommand("/set_view"), " - ", formatting.Italic("text"), "\n",
+        formatting.BotCommand("/set_view"), " - ", formatting.Italic("змінити вигляд графіку"), "\n",
         "\n",
         formatting.Bold("🧮Підсумок"), " : ", formatting.Code(f"{total}"), "\n",
-        formatting.BotCommand("/set_total"), " - ", formatting.Italic("text")
+        formatting.BotCommand("/set_total"), " - ", formatting.Italic("змінити показ підсумку")
         )
 
 configure()
@@ -64,9 +66,27 @@ async def command_start(message: types.Message):
         await message.answer(**content.as_kwargs())
     else:
         content = formatting.Text(
-            "Привіт, ", formatting.Bold(message.from_user.full_name), "!", " Давно не бачились!😏",
+            "Привіт, ", formatting.Bold(message.from_user.full_name), "!", "\n", 
+            " Давно не бачились!😏",
+            formatting.BotCommand(f"{'\n\n/update' if str(message.from_user.id) == str(MY_USER_ID) else ''}"),
+            formatting.Italic(f"{' - оновити базу графіків' if str(message.from_user.id) == str(MY_USER_ID) else ''}"),
             )
         await message.answer(**content.as_kwargs())
+
+@dp.message(Command('update'))
+async def command_update(message: types.Message):
+    if str(message.from_user.id) == str(MY_USER_ID):
+        DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
+        for day_name, groups in DAYS.items():
+            db_days.add_day(day_name=day_name, groups=groups)
+        now_time = datetime.now().strftime("%d.%m %H:%M:%S")
+        context = formatting.Text(
+                formatting.Bold("Графіки оновленні!"), "\n",
+                "\n",
+                formatting.Italic(f"🔄{now_time}🔄")
+            )
+        await message.answer(**context.as_kwargs())
+        await message.delete()
 
 @dp.message(Command('help'))
 async def command_help(message: types.Message):
@@ -174,6 +194,24 @@ async def command_set_total(message: types.Message):
     rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(вигляд)", one_time_keyboard=True, selective=True)
     await message.reply(**content.as_kwargs(), reply_markup=rkm)
 
+@dp.message(Command('get_today'))
+async def command_get_today(message: types.Message):
+    #TODO implement get_today()
+    today_name = get_today_name()
+    content = formatting.Text(
+            formatting.Bold(f"<🆘ГРАФІК на {today_name}🆘>"),
+            )
+    await message.answer(**content.as_kwargs())
+
+@dp.message(Command('get_tomorrow'))
+async def command_get_tomorrow(message: types.Message):
+    #TODO implement get_tomorrow()
+    today_name = get_tomorrow_name()
+    content = formatting.Text(
+            formatting.Bold(f"<🆘ГРАФІК на {today_name}🆘>"),
+            )
+    await message.answer(**content.as_kwargs())
+
 @dp.message()
 async def text_message(message: types.Message):
     txt = message.text
@@ -201,56 +239,6 @@ async def text_message(message: types.Message):
             await message.reply(**content.as_kwargs(), reply_markup=types.ReplyKeyboardRemove())
         case _:
             pass
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-@dp.message(Command('get_today'))
-async def get_today(message: types.Message):
-    #TODO implement get_today()
-    content = formatting.Text(
-            "<🆘Погода на сьогодні🆘>",
-            )
-    await message.answer(**content.as_kwargs())
-
-@dp.message(Command('get_tomorrow'))
-async def get_tomorrow(message: types.Message):
-    #TODO implement get_tomorrow()
-    content = formatting.Text(
-            "<🆘Погода на завтра🆘>",
-            )
-    await message.answer(**content.as_kwargs())
-
-@dp.message(Command('update'))
-async def update(message: types.Message):
-    #TODO implement update()
-    content = formatting.Text(
-            "<🆘Оновлення бази дани по графіках🆘>",
-            )
-    await message.answer(**content.as_kwargs())
-
-
-
-
-
-
-
 
 async def main():
     await dp.start_polling(bot)

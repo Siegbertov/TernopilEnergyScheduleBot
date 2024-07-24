@@ -2,7 +2,6 @@ import requests
 import re
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-import telebot.formatting
 
 
 # FUNCTIONS FOR SCRAPPING
@@ -68,16 +67,6 @@ def scrapper(link:str, day_month_r:str, group_r:str) -> dict:
             result_d[reversed_key] = temp_d[reversed_key]
     return dict(reversed(list(result_d.items())))
 
-# TEXT_FORMATING FUNCTIONS
-def bold(text:str) -> str:
-    return telebot.formatting.mbold(text)
-
-def italic(text:str) -> str:
-    return telebot.formatting.mitalic(text)
-
-def mono(text:str) -> str:
-    return f"`{text}`"
-
 # OTHER FUNCTIONS
 def __parse_date_as_ukr(date:str)->str:
     MONTH_UA_OR = {
@@ -105,5 +94,17 @@ def get_tomorrow_name()->str:
     some_day = (datetime.today() + timedelta(days=1)).strftime("%d %m")
     return __parse_date_as_ukr(some_day) 
 
+def difference_in_time(hour_1:list, hour_2:list) -> list:
+    d_1 = timedelta(hours=int(hour_1[0]), minutes=int(hour_1[1]))
+    d_2 = timedelta(hours=int(hour_2[0]), minutes=int(hour_2[1]))
+    result = d_2 - d_1
+    H, M, _ = str(result).split(":")
+    return [H, M]
 
+def sum_of_time(hour_1:list, hour_2:list) -> list:
+    d_1 = timedelta(hours=int(hour_1[0]), minutes=int(hour_1[1]))
+    d_2 = timedelta(hours=int(hour_2[0]), minutes=int(hour_2[1]))
+    result = d_2 + d_1
+    H, M, _ = str(result).split(":")
+    return [H, M]
 
