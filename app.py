@@ -2,7 +2,8 @@ import os
 from dotenv import load_dotenv
 import telebot
 from telebot import types
-from utils import scrapper, get_today_name, get_tomorrow_name
+import telebot.formatting
+from utils import scrapper, get_today_name, get_tomorrow_name, bold, italic, mono
 from db_day_handler import DB_Days
 from db_user_handler import DB_Users
 
@@ -39,7 +40,6 @@ if __name__ == "__main__":
     
     @bot.message_handler(commands=['update'])
     def update(message):
-        bot.send_message(message.chat.id, message.from_user.id)
         if str(message.from_user.id) == str(MY_USER_ID):
             DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
             for day_name, groups in DAYS.items():
@@ -51,7 +51,33 @@ if __name__ == "__main__":
     @bot.message_handler(commands=['settings'])
     def settings(message):
         # TODO implement command /settings
-        bot.send_message(message.chat.id, "Not Implemented....yet!")
+        user_settings = db_users.get_user(user_id=message.from_user.id)
+        _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+        # TODO change showing of groups_to_show
+        groups_to_show = [x for x in range(1, 7) if groups_to_show[x-1]]
+        txt = f"""▪️Авторозсилка : {bold('ON' if auto_send else 'OFF')}
+/change_auto_send
+
+▪️Емоджі відключення : {bold(off_emoji)}
+/set_emoji_off + YOUR_EMOJI
+
+▪️Емоджі включення: {bold(on_emoji)}
+/set_emoji_on + YOUR_EMOJI
+
+▪️Мої групи : {bold('')}
+/add_group + NUMBER
+/remove_group + NUMBER
+
+▪️Вигляд : {bold(view)} 
+<INLINE, ON_PAIRS, OFF_PAIRS>
+/set_view + VALUE
+
+▪️Сумарний час включень/відключень : {bold(total)} 
+<NONE, OFF, ON>
+/set_total + VALUE"""
+        txt = txt.replace("_", "\\_")
+        bot.send_message(message.chat.id, txt, parse_mode='Markdown')
+        bot.send_message(message.chat.id, "<b>Команди поки що не працюють!!!</b>", parse_mode="HTML")
 
     @bot.message_handler(commands=['get_today'])
     def get_today(message):

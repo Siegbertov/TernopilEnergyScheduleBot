@@ -2,6 +2,7 @@ import requests
 import re
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+import telebot.formatting
 
 
 # FUNCTIONS FOR SCRAPPING
@@ -66,6 +67,16 @@ def scrapper(link:str, day_month_r:str, group_r:str) -> dict:
         if reversed_key not in result_d:
             result_d[reversed_key] = temp_d[reversed_key]
     return dict(reversed(list(result_d.items())))
+
+# TEXT_FORMATING FUNCTIONS
+def bold(text:str) -> str:
+    return telebot.formatting.mbold(text)
+
+def italic(text:str) -> str:
+    return telebot.formatting.mitalic(text)
+
+def mono(text:str) -> str:
+    return f"`{text}`"
 
 # OTHER FUNCTIONS
 def __parse_date_as_ukr(date:str)->str:

@@ -1,3 +1,4 @@
 __pycache__
 .env
 small_db.sql
+small_db_aiogram.sql
