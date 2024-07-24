@@ -86,5 +86,3 @@ class DB_Days(DB):
 
 
 
-
-

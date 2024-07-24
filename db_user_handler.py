@@ -6,6 +6,7 @@ class DB_Users(DB):
         super().__init__(db_filename=db_filename)
         self.possible_groups = [str(x) for x in range(1, 7)]
         self.possible_views = ["INLINE", "OFF_PAIRS", "ON_PAIRS"]
+        self.possible_totals = ["NONE", "ON", "OFF"]
         self.__create_table()
     
     def __create_table(self)->None:
@@ -111,7 +112,6 @@ class DB_Users(DB):
         pass
 
     def add_group(self, user_id:str, num_to_add:str)->None:
-        #TODO implement add_group()
         group_to_add = {"1":"first_g", "2":"second_g", "3":"third_g", "4":"fourth_g", "5":"fifth_g", "6":"sixth_g"}[num_to_add]
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
@@ -124,7 +124,6 @@ class DB_Users(DB):
         connection.close()
     
     def remove_group(self, user_id:str, num_to_remove:str)->None:
-        #TODO implement remove_group()
         group_to_remove = {"1":"first_g", "2":"second_g", "3":"third_g", "4":"fourth_g", "5":"fifth_g", "6":"sixth_g"}[num_to_remove]
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
@@ -150,7 +149,6 @@ class DB_Users(DB):
         return result[0]
 
     def set_new_view(self, user_id:str, new_view:str)->None:
-        #TODO implement set_view()
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
         cursor.execute(
@@ -161,8 +159,25 @@ class DB_Users(DB):
         cursor.close()
         connection.close()
 
-    def set_total(self, user_id:str, new_total:str)->None:
-        #TODO implement set_total()
-        pass
+    def get_total(self, user_id:str)->str:
+        result = [None]
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+        result = cursor.execute(f"SELECT total FROM users WHERE user_id=:user_id", {'user_id':user_id}).fetchone()
+        connection.commit()
+        cursor.close()
+        connection.close()
+        return result[0]
+
+    def set_new_total(self, user_id:str, new_total:str)->None:
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+        cursor.execute(
+                        f"UPDATE users SET total=:total",
+                        {"total":new_total}
+                        )
+        connection.commit()
+        cursor.close()
+        connection.close()
     
 

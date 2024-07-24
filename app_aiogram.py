@@ -133,9 +133,11 @@ async def command_add_group(message: types.Message):
 
 @dp.message(Command('remove_group'))
 async def command_remove_group(message: types.Message):
+    groups = db_users.get_groups(user_id=message.from_user.id)
+    groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
     content = formatting.Text(
-            "<🆘Видалити групу🆘>",
-            )
+                formatting.Bold("🔠Мої групи"), " : ", formatting.Code(f"[{groups_to_show_str}]"), 
+                )
     kb = []
     kb.append([types.KeyboardButton(text=f"Скасувати")])
     groups = db_users.get_groups(user_id=message.from_user.id)
@@ -146,7 +148,6 @@ async def command_remove_group(message: types.Message):
 
 @dp.message(Command('set_view'))
 async def command_set_view(message: types.Message):
-    #TODO implement set_view()
     current_view = db_users.get_view(user_id=message.from_user.id)
     content = formatting.Text(
             formatting.Bold("🖼Вигляд"), " : ", formatting.Code(current_view)
@@ -156,16 +157,22 @@ async def command_set_view(message: types.Message):
     for view in db_users.possible_views:
         if view != current_view:
             kb.append([types.KeyboardButton(text=view)])
-    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
+    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(вигляд)", one_time_keyboard=True, selective=True)
     await message.reply(**content.as_kwargs(), reply_markup=rkm)
 
 @dp.message(Command('set_total'))
 async def command_set_total(message: types.Message):
-    #TODO implement set_total()
+    current_total = db_users.get_total(user_id=message.from_user.id)
     content = formatting.Text(
-            "<🆘Змінити підсумок🆘>",
+            formatting.Bold("🧮Підсумок"), " : ", formatting.Code(current_total)
             )
-    await message.answer(**content.as_kwargs())
+    kb = []
+    kb.append([types.KeyboardButton(text=f"Скасувати")])
+    for total in db_users.possible_totals:
+        if total != current_total:
+            kb.append([types.KeyboardButton(text=total)])
+    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(вигляд)", one_time_keyboard=True, selective=True)
+    await message.reply(**content.as_kwargs(), reply_markup=rkm)
 
 @dp.message()
 async def text_message(message: types.Message):
@@ -184,6 +191,9 @@ async def text_message(message: types.Message):
         case txt if txt in db_users.possible_views:
             db_users.set_new_view(user_id=message.from_user.id, new_view=txt)
             await command_set_view(message=message)
+        case txt if txt in db_users.possible_totals:
+            db_users.set_new_total(user_id=message.from_user.id, new_total=txt)
+            await command_set_total(message=message)
         case txt if txt in ["Скасувати"]:
             content = formatting.Text(
                     "❌",
