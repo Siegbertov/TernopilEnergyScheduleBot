@@ -1,8 +1,8 @@
 import os
 from dotenv import load_dotenv
 import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command, CommandStart
 from aiogram.utils import formatting
 
 from db_day_handler import DB_Days
@@ -50,8 +50,8 @@ db_days = DB_Days(db_filename=DATABASE_FILENAME)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-@dp.message(Command('start'))
-async def start(message: types.Message):
+@dp.message(CommandStart())
+async def command_start(message: types.Message):
     if not db_users.is_user_id_exists(user_id=message.from_user.id): 
         db_users.add_user(user_id=message.from_user.id)
         content = formatting.Text(
@@ -69,7 +69,7 @@ async def start(message: types.Message):
         await message.answer(**content.as_kwargs())
 
 @dp.message(Command('help'))
-async def help(message: types.Message):
+async def command_help(message: types.Message):
     # TODO implements help()
     content = formatting.Text(
             "<🆘Список корисних команд🆘>",
@@ -77,7 +77,7 @@ async def help(message: types.Message):
     await message.answer(**content.as_kwargs())
 
 @dp.message(Command('info'))
-async def info(message: types.Message):
+async def command_info(message: types.Message):
     # TODO implements info()
     content = formatting.Text(
             "<🆘Інформація про бота🆘>",
@@ -85,18 +85,23 @@ async def info(message: types.Message):
     await message.answer(**content.as_kwargs())
 
 @dp.message(Command('settings'))
-async def settings(message: types.Message):
+async def command_settings(message: types.Message):
     user_settings_content = generate_settings_content(db=db_users, user_id=message.from_user.id)
     await message.reply(**user_settings_content.as_kwargs())
 
 @dp.message(Command('change_auto_send'))
-async def change_auto_send(message: types.Message):
+async def command_change_auto_send(message: types.Message):
     db_users.change_auto_send(user_id=message.from_user.id)
-    user_settings_content = generate_settings_content(db=db_users, user_id=message.from_user.id)
-    await message.reply(**user_settings_content.as_kwargs())
+    status = db_users.get_auto_send_status(user_id=message.from_user.id)
+    content = formatting.Text(
+        formatting.Bold("📮Авторозсилка"), " : ", formatting.Code(f"{'ON' if status else 'OFF'}"), "\n",
+        formatting.BotCommand("/change_auto_send"), " - ", formatting.Italic(f"{'ввімкнути' if status else 'вимкнути'} авторозсилку"), "\n",
+        "\n"
+    )
+    await message.reply(**content.as_kwargs())
 
 @dp.message(Command('set_emoji_off'))
-async def set_emoji_off(message: types.Message):
+async def command_set_emoji_off(message: types.Message):
     #TODO implement set_emoji_off()
     content = formatting.Text(
             "<🆘Змінити EMOJI_OFF🆘>",
@@ -104,7 +109,7 @@ async def set_emoji_off(message: types.Message):
     await message.answer(**content.as_kwargs())
 
 @dp.message(Command('set_emoji_on'))
-async def set_emoji_on(message: types.Message):
+async def command_set_emoji_on(message: types.Message):
     #TODO implement set_emoji_on()
     content = formatting.Text(
             "<🆘Змінити EMOJI_ON🆘>",
@@ -112,26 +117,37 @@ async def set_emoji_on(message: types.Message):
     await message.answer(**content.as_kwargs())
 
 @dp.message(Command('add_group'))
-async def add_group(message: types.Message):
+async def command_add_group(message: types.Message):
     #TODO implement add_group()
+    groups = db_users.get_groups(user_id=message.from_user.id)
+    groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
     content = formatting.Text(
-            "<🆘Добавити групу🆘>",
-            )
-
-    groups_markup = types.ReplyKeyboardMarkup()
-    # groups_markup.add("1").add("2").add("3").add("4").add("5").add("6")
-    await message.answer(**content.as_kwargs(), reply_markup=groups_markup)
+                formatting.Bold("🔠Мої групи"), " : ", formatting.Code(f"[{groups_to_show_str}]"), 
+                )
+    kb = []
+    kb.append([types.KeyboardButton(text=f"Скасувати")])
+    groups = db_users.get_groups(user_id=message.from_user.id)
+    for group in [str(x) for x in db_users.possible_groups if not groups[int(x)-1]]:
+        kb.append([types.KeyboardButton(text=f"+{group}")])
+    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
+    await message.answer(**content.as_kwargs(), reply_markup=rkm)
 
 @dp.message(Command('remove_group'))
-async def remove_group(message: types.Message):
+async def command_remove_group(message: types.Message):
     #TODO implement remove_group()
     content = formatting.Text(
             "<🆘Видалити групу🆘>",
             )
-    await message.answer(**content.as_kwargs())
+    kb = []
+    kb.append([types.KeyboardButton(text=f"Скасувати")])
+    groups = db_users.get_groups(user_id=message.from_user.id)
+    for group in [str(x) for x in db_users.possible_groups if groups[int(x)-1]]:
+        kb.append([types.KeyboardButton(text=f"-{group}")])
+    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
+    await message.answer(**content.as_kwargs(), reply_markup=rkm)
 
 @dp.message(Command('set_view'))
-async def set_view(message: types.Message):
+async def command_set_view(message: types.Message):
     #TODO implement set_view()
     content = formatting.Text(
             "<🆘Змінити вигляд🆘>",
@@ -139,14 +155,34 @@ async def set_view(message: types.Message):
     await message.answer(**content.as_kwargs())
 
 @dp.message(Command('set_total'))
-async def set_total(message: types.Message):
+async def command_set_total(message: types.Message):
     #TODO implement set_total()
     content = formatting.Text(
             "<🆘Змінити підсумок🆘>",
             )
     await message.answer(**content.as_kwargs())
 
-
+@dp.message()
+async def text_message(message: types.Message):
+    txt = message.text
+    match txt:
+        case txt if txt in ["+1", "+2", "+3", "+4", "+5", "+6"]:
+            content = formatting.Text( "✅" )
+            db_users.add_group(user_id=message.from_user.id, num_to_add=txt[1])
+            await message.reply(**content.as_kwargs())
+            await command_add_group(message=message)
+        case txt if txt in ["-1", "-2", "-3", "-4", "-5", "-6"]:
+            content = formatting.Text( "✅" )
+            db_users.remove_group(user_id=message.from_user.id, num_to_remove=txt[1])
+            await message.reply(**content.as_kwargs())
+            await command_remove_group(message=message)
+        case txt if txt in ["Скасувати"]:
+            content = formatting.Text(
+                    "❌",
+                    )
+            await message.reply(**content.as_kwargs(), reply_markup=types.ReplyKeyboardRemove())
+        case _:
+            pass
 
 
 

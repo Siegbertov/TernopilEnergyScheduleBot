@@ -6,7 +6,7 @@ class DB_Users(DB):
         super().__init__(db_filename=db_filename)
         self.possible_groups = [str(x) for x in range(1, 7)]
         self.__create_table()
-
+    
     def __create_table(self)->None:
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
@@ -18,7 +18,7 @@ class DB_Users(DB):
                                         first_g INTEGER DEFAULT 1,
                                         second_g INTEGER DEFAULT 1,
                                         third_g INTEGER DEFAULT 1,
-                                        fouth_g INTEGER DEFAULT 1,
+                                        fourth_g INTEGER DEFAULT 1,
                                         fifth_g INTEGER DEFAULT 1,
                                         sixth_g INTEGER DEFAULT 1,
                                         view TEXT DEFAULT 'OFF_PAIRS',
@@ -27,6 +27,19 @@ class DB_Users(DB):
         connection.commit()
         cursor.close()
         connection.close()
+
+    def get_groups(self, user_id:str)->list:
+        result = None
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+
+        result = cursor.execute(f"SELECT first_g, second_g, third_g, fourth_g, fifth_g, sixth_g FROM users WHERE user_id=:user_id", {'user_id':user_id}).fetchone()
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+        return result
 
     def is_user_id_exists(self, user_id:str)->bool:
         result = None
@@ -63,6 +76,19 @@ class DB_Users(DB):
         cursor.close()
         connection.close()
 
+    def get_auto_send_status(self, user_id:str)->bool:
+        result = [None]
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+
+        result = cursor.execute(f"SELECT auto_send FROM users WHERE user_id=:user_id", {'user_id':user_id}).fetchone()
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+        return result[0]
+
     def change_auto_send(self, user_id:str)->None:
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
@@ -85,11 +111,29 @@ class DB_Users(DB):
 
     def add_group(self, user_id:str, num_to_add:str)->None:
         #TODO implement add_group()
-        pass
+        group_to_add = {"1":"first_g", "2":"second_g", "3":"third_g", "4":"fourth_g", "5":"fifth_g", "6":"sixth_g"}[num_to_add]
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+        cursor.execute(
+                        f"UPDATE users SET {group_to_add}=:{group_to_add}",
+                        {group_to_add:1}
+                                        )
+        connection.commit()
+        cursor.close()
+        connection.close()
     
     def remove_group(self, user_id:str, num_to_remove:str)->None:
         #TODO implement remove_group()
-        pass
+        group_to_remove = {"1":"first_g", "2":"second_g", "3":"third_g", "4":"fourth_g", "5":"fifth_g", "6":"sixth_g"}[num_to_remove]
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+        cursor.execute(
+                        f"UPDATE users SET {group_to_remove}=:{group_to_remove}",
+                        {group_to_remove:0}
+                        )
+        connection.commit()
+        cursor.close()
+        connection.close()
 
     def set_view(self, user_id:str, new_view:str)->None:
         #TODO implement set_view()
