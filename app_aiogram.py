@@ -7,9 +7,12 @@ from aiogram.utils import formatting
 
 from db_day_handler import DB_Days
 from db_user_handler import DB_Users
-from utils import scrapper, get_today_name, get_tomorrow_name
+from day import Day
+from utils import edit_time_period, scrapper, get_today_name, get_tomorrow_name, pretty_time
 from datetime import datetime
 
+# TODO implements command /today | /tomorrow from other file
+# TODO REFACTOR it
 
 def configure():
     load_dotenv()
@@ -41,8 +44,11 @@ def generate_settings_content(db, user_id:str):
 
 configure()
 TOKEN = os.getenv('TOKEN')
-MY_USER_ID = os.getenv('MY_USER_ID')
 LINK = os.getenv('LINK')
+
+ADMINS = []
+MY_USER_ID = os.getenv('MY_USER_ID')
+ADMINS.append(MY_USER_ID)
 
 DATABASE_FILENAME = "small_db_aiogram.sql"
 db_users = DB_Users(db_filename=DATABASE_FILENAME)
@@ -54,23 +60,24 @@ dp = Dispatcher()
 
 @dp.message(CommandStart())
 async def command_start(message: types.Message):
+    content = formatting.Text(  
+            formatting.BotCommand("/help"), " - ", formatting.Italic("список команд"), "\n",
+            )
     if not db_users.is_user_id_exists(user_id=message.from_user.id): 
         db_users.add_user(user_id=message.from_user.id)
         content = formatting.Text(
             "Привіт, ", formatting.Bold(message.from_user.full_name), "!👋\n",
-            "\n",
-            formatting.BotCommand("/help"), " - ", formatting.Italic("допомога"), "\n", 
-            formatting.BotCommand("/info"), " - ", formatting.Italic("інфо"), "\n",
-            formatting.BotCommand("/settings"), " - ", formatting.Italic("налаштування"), "\n",
-            )
+            "\n",) + content
         await message.answer(**content.as_kwargs())
     else:
         content = formatting.Text(
-            "Привіт, ", formatting.Bold(message.from_user.full_name), "!", "\n", 
-            " Давно не бачились!😏",
-            formatting.BotCommand(f"{'\n\n/update' if str(message.from_user.id) == str(MY_USER_ID) else ''}"),
-            formatting.Italic(f"{' - оновити базу графіків' if str(message.from_user.id) == str(MY_USER_ID) else ''}"),
-            )
+            "Привіт, ", formatting.Bold(message.from_user.full_name), ", давно не бачились!😏", "\n") + content
+        if str(message.from_user.id) in ADMINS:
+            content += formatting.Text(
+                "\n",
+                formatting.Italic("Cпеціально для адмінів:😉"), "\n",
+                formatting.BotCommand("/update"), " - ", formatting.Italic("перевірити графіки")
+                )
         await message.answer(**content.as_kwargs())
 
 @dp.message(Command('update'))
@@ -90,17 +97,24 @@ async def command_update(message: types.Message):
 
 @dp.message(Command('help'))
 async def command_help(message: types.Message):
-    # TODO implements help()
     content = formatting.Text(
-            "<🆘Список корисних команд🆘>",
+            formatting.Bold("Список команд:"), "\n",
+            "\n",
+            formatting.BotCommand("/info"), " - ", formatting.Italic("інформація про бот"), "\n",
+            formatting.BotCommand("/settings"), " - ", formatting.Italic("перейти до налаштувань"), "\n",
+            formatting.BotCommand("/get_today"), " - ", formatting.Italic("показати графік на сьогодні"), "\n",
+            formatting.BotCommand("/get_tomorrow"), " - ", formatting.Italic("показати графік на завтра"), "\n",
             )
     await message.answer(**content.as_kwargs())
 
 @dp.message(Command('info'))
 async def command_info(message: types.Message):
-    # TODO implements info()
     content = formatting.Text(
-            "<🆘Інформація про бота🆘>",
+            formatting.Bold("<🆘Інформація про бот🆘>"), "\n",
+            "\n",
+            formatting.Code("бла-бла-бла-бла"), "\n",
+            formatting.Code("бла-бла-бла-бла"), "\n",
+            formatting.Code("бла-бла-бла-бла"), "\n",
             )
     await message.answer(**content.as_kwargs())
 
@@ -194,23 +208,93 @@ async def command_set_total(message: types.Message):
     rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(вигляд)", one_time_keyboard=True, selective=True)
     await message.reply(**content.as_kwargs(), reply_markup=rkm)
 
-@dp.message(Command('get_today'))
-async def command_get_today(message: types.Message):
-    #TODO implement get_today()
-    today_name = get_today_name()
-    content = formatting.Text(
-            formatting.Bold(f"<🆘ГРАФІК на {today_name}🆘>"),
-            )
-    await message.answer(**content.as_kwargs())
+@dp.message(Command('today'))
+async def command_today(message: types.Message):
+    some_day = get_today_name()
+    content = formatting.Text( formatting.Bold(f"Графік на {some_day}:"), "\n")
+    if db_days.exists(day_name=some_day):
+        _, *some_day_groups_l = db_days.get_day(day_name=some_day)
+        user_settings = db_users.get_user(user_id=message.from_user.id)
+        _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
 
-@dp.message(Command('get_tomorrow'))
-async def command_get_tomorrow(message: types.Message):
-    #TODO implement get_tomorrow()
-    today_name = get_tomorrow_name()
-    content = formatting.Text(
-            formatting.Bold(f"<🆘ГРАФІК на {today_name}🆘>"),
-            )
-    await message.answer(**content.as_kwargs())
+        groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
+        groups_d = {(k+1):v for k, v in enumerate(some_day_groups_l)}
+        day = Day(name=some_day, groups=groups_d)
+        NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
+        if NUMS_and_VIEWS_and_TOTALS_L:
+            for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
+                n, v_s, t = num_and_view_and_total_l
+                content += formatting.Text(
+                    formatting.Bold(f"\n#{n}:",'\n')
+                )
+                for v in v_s:
+                    if v is not None:
+                        current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
+                        content += formatting.Text(
+                            formatting.Code(f"{edit_time_period(current_line)}"), "\n"
+                        )
+                if t is None:
+                    pass
+                else:
+                    if t == (0, 0):
+                        content += formatting.Text(formatting.Italic(f"{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}"), "\n")
+                    else:
+                        content += formatting.Text(formatting.Italic(f"{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}"), "\n")
+        else:
+            content += formatting.Text( 
+                "\n", 
+                formatting.BotCommand("/add_group"), " - ", formatting.Italic("добавити групу"), "\n"
+                )
+        await message.answer(**content.as_kwargs())
+    else:
+        content += formatting.Text(  
+                formatting.Italic("<графік відсутній>"), "\n"
+                )
+        await message.answer(**content.as_kwargs())
+
+@dp.message(Command('tomorrow'))
+async def command_tomorrow(message: types.Message):
+    some_day = get_tomorrow_name()
+    content = formatting.Text( formatting.Bold(f"Графік на {some_day}:"), "\n")
+    if db_days.exists(day_name=some_day):
+        _, *some_day_groups_l = db_days.get_day(day_name=some_day)
+        user_settings = db_users.get_user(user_id=message.from_user.id)
+        _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+
+        groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
+        groups_d = {(k+1):v for k, v in enumerate(some_day_groups_l)}
+        day = Day(name=some_day, groups=groups_d)
+        NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
+        if NUMS_and_VIEWS_and_TOTALS_L:
+            for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
+                n, v_s, t = num_and_view_and_total_l
+                content += formatting.Text(
+                    formatting.Bold(f"\n#{n}:",'\n')
+                )
+                for v in v_s:
+                    if v is not None:
+                        current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
+                        content += formatting.Text(
+                            formatting.Code(f"{edit_time_period(current_line)}"), "\n"
+                        )
+                if t is None:
+                    pass
+                else:
+                    if t == (0, 0):
+                        content += formatting.Text(formatting.Italic(f"{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}"), "\n")
+                    else:
+                        content += formatting.Text(formatting.Italic(f"{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}"), "\n")
+        else:
+            content += formatting.Text( 
+                "\n", 
+                formatting.BotCommand("/add_group"), " - ", formatting.Italic("добавити групу"), "\n"
+                )
+        await message.answer(**content.as_kwargs())
+    else:
+        content += formatting.Text(  
+                formatting.Italic("<графік відсутній>"), "\n"
+                )
+        await message.answer(**content.as_kwargs())
 
 @dp.message()
 async def text_message(message: types.Message):

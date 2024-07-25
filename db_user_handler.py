@@ -6,7 +6,7 @@ class DB_Users(DB):
         super().__init__(db_filename=db_filename)
         self.possible_groups = [str(x) for x in range(1, 7)]
         self.possible_views = ["INLINE", "OFF_PAIRS", "ON_PAIRS"]
-        self.possible_totals = ["NONE", "ON", "OFF"]
+        self.possible_totals = ["NONE", "TOTAL_ON", "TOTAL_OFF"]
         self.__create_table()
     
     def __create_table(self)->None:
@@ -103,21 +103,35 @@ class DB_Users(DB):
         cursor.close()
         connection.close()
 
-    def set_emoji_on(self, user_id:str, new_on_emoji:str)->None:
-        #TODO implement set_emoji_on()
-        pass
+    def set_on_emoji(self, user_id:str, new_on_emoji:str)->None:
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+        cursor.execute(
+                        f"UPDATE users SET on_emoji=:on_emoji WHERE user_id=:user_id",
+                        {"user_id":user_id, "on_emoji":new_on_emoji}
+                        )
+        connection.commit()
+        cursor.close()
+        connection.close()
 
-    def set_emoji_off(self, user_id:str, new_off_emoji:str)->None:
-        #TODO implement set_emoji_off()
-        pass
+    def set_off_emoji(self, user_id:str, new_off_emoji:str)->None:
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+        cursor.execute(
+                        f"UPDATE users SET off_emoji=:off_emoji WHERE user_id=:user_id",
+                        {"user_id":user_id, "off_emoji":new_off_emoji}
+                        )
+        connection.commit()
+        cursor.close()
+        connection.close()
 
     def add_group(self, user_id:str, num_to_add:str)->None:
         group_to_add = {"1":"first_g", "2":"second_g", "3":"third_g", "4":"fourth_g", "5":"fifth_g", "6":"sixth_g"}[num_to_add]
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
         cursor.execute(
-                        f"UPDATE users SET {group_to_add}=:{group_to_add}",
-                        {group_to_add:1}
+                        f"UPDATE users SET {group_to_add}=:{group_to_add} WHERE user_id=:user_id",
+                        {group_to_add:1, "user_id":user_id}
                                         )
         connection.commit()
         cursor.close()
@@ -128,8 +142,8 @@ class DB_Users(DB):
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
         cursor.execute(
-                        f"UPDATE users SET {group_to_remove}=:{group_to_remove}",
-                        {group_to_remove:0}
+                        f"UPDATE users SET {group_to_remove}=:{group_to_remove} WHERE user_id=:user_id",
+                        {group_to_remove:0, "user_id":user_id}
                         )
         connection.commit()
         cursor.close()
@@ -152,8 +166,8 @@ class DB_Users(DB):
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
         cursor.execute(
-                        f"UPDATE users SET view=:view",
-                        {"view":new_view}
+                        f"UPDATE users SET view=:view WHERE user_id=:user_id",
+                        {"user_id":user_id, "view":new_view}
                         )
         connection.commit()
         cursor.close()
@@ -173,8 +187,8 @@ class DB_Users(DB):
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
         cursor.execute(
-                        f"UPDATE users SET total=:total",
-                        {"total":new_total}
+                        f"UPDATE users SET total=:total WHERE user_id=:user_id",
+                        {"user_id":user_id, "total":new_total}
                         )
         connection.commit()
         cursor.close()

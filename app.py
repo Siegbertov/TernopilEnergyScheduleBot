@@ -83,7 +83,7 @@ if __name__ == "__main__":
     def get_today(message):
         # TODO implement BEAUTIFUL command /get_today 
         day_name = get_today_name()
-        db_day = db_days.get_day_by_name(day_name=day_name)
+        db_day = db_days.get_day(day_name=day_name)
         if db_day:
             d_n, *g_s = db_day
             txt = f"*Графік на {d_n}:*"
@@ -99,7 +99,7 @@ if __name__ == "__main__":
     def get_tomorrow(message):
         # TODO implement BEAUTIFUL command /get_tomorrow
         day_name = get_tomorrow_name()
-        db_day = db_days.get_day_by_name(day_name=day_name)
+        db_day = db_days.get_day(day_name=day_name)
         if db_day:
             d_n, *g_s = db_day
             txt = f"*Графік на {d_n}:*"

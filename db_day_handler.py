@@ -35,7 +35,7 @@ class DB_Days(DB):
 
         return result
 
-    def get_day_by_name(self, day_name:str)->tuple | None:
+    def get_day(self, day_name:str)->tuple | None:
         result = None
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
@@ -48,12 +48,12 @@ class DB_Days(DB):
 
         return result
     
-    def is_day_exists(self, day_name:str)->bool:
-        return bool(self.get_day_by_name(day_name=day_name))
+    def exists(self, day_name:str)->bool:
+        return bool(self.get_day(day_name=day_name))
 
     def add_day(self, day_name:str, groups:dict)->None:
-        if self.is_day_exists(day_name=day_name):
-            db_day_tuple = self.get_day_by_name(day_name=day_name)
+        if self.exists(day_name=day_name):
+            db_day_tuple = self.get_day(day_name=day_name)
             parsed_day = [day_name]
             for group in groups.values():
                 parsed_day.append(group)

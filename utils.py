@@ -3,9 +3,40 @@ import re
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
+NUM_PERIOD = {
+    "0":"⁰",
+    "1":"¹",
+    "2":"²",
+    "3":"³",
+    "4":"⁴",
+    "5":"⁵",
+    "6":"⁶",
+    "7":"⁷",
+    "8":"⁸",
+    "9":"⁹"
+}
+
+def get_time_period(text:str, period_str=NUM_PERIOD) -> str:
+    hs, ms = text.split(":")
+    result = ""
+    for m in ms:
+        result += NUM_PERIOD[m]
+    return f"{hs}{result}"
+
+def edit_time_period(text:str) -> str:
+    return re.sub(r"(\d\d:\d\d)", lambda x: get_time_period(x.group(1)), text)
+
+def pretty_time(cur_t:tuple)->str:
+    result = ""
+    if cur_t != (0, 0):
+        if cur_t[0] != 0:
+            result += f"{cur_t[0]}год. "
+        if cur_t[1] != 0:
+            result += f"{cur_t[1]}хв."
+    return result.strip()
 
 # FUNCTIONS FOR SCRAPPING
-def __re_search_all_off_lines(text:str, pattern_r:str) -> dict:
+def __re_search_all_inlines(text:str, pattern_r:str) -> dict:
     result = {}
     try:
         pattern = re.compile(pattern_r)
@@ -32,6 +63,10 @@ def __re_search_all_off_lines(text:str, pattern_r:str) -> dict:
             current_inline = f"{current_inline}+24:00"
         temp[pair] = current_inline
 
+    for x in [str(i) for i in range(1, 7)]:
+        if x not in temp.keys():
+            temp[x] = "00:00+24:00"
+
     return temp
 
 def __re_search_day_and_month(text:str, pattern_r:str) -> tuple:
@@ -56,12 +91,11 @@ def scrapper(link:str, day_month_r:str, group_r:str) -> dict:
 
             if text is not None:
                 day, month = __re_search_day_and_month(text=text.text, pattern_r=day_month_r)
-                groups = __re_search_all_off_lines(text=text.text, pattern_r=group_r)
+                groups = __re_search_all_inlines(text=text.text, pattern_r=group_r)
                 if not(day is None or month is None or groups == {}):
                     temp_d[f"{day} {month}"] = groups
     except requests.ConnectionError as e:
         pass
-
     for reversed_key in list(temp_d.keys())[::-1]:
         if reversed_key not in result_d:
             result_d[reversed_key] = temp_d[reversed_key]
