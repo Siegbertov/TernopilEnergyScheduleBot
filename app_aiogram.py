@@ -11,6 +11,7 @@ from day import Day
 from utils import edit_time_period, scrapper, get_today_name, get_tomorrow_name, pretty_time
 from datetime import datetime
 import math
+import time
 
 
 def configure():
@@ -159,7 +160,7 @@ async def command_set_emoji_off(message: types.Message):
             # await message.answer(text=f"{em}")
             current_row.append(types.InlineKeyboardButton(text=emoji, callback_data=f"cb_set_emoji_off_{emoji}"))
         buttons.append(current_row)
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons,)
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.reply(**content.as_kwargs(), reply_markup=keyboard)
 
 @dp.message(Command('set_emoji_on'))
@@ -231,29 +232,45 @@ async def command_remove_group(message: types.Message):
 async def command_set_view(message: types.Message):
     current_view = db_users.get_view(user_id=message.from_user.id)
     content = Text(
-            Bold("🖼Вигляд"), " : ", Code(current_view)
+            Bold("<Вибери новий вигляд>"), "\n",
             )
-    kb = []
-    kb.append([types.KeyboardButton(text=f"Скасувати")])
+    buttons = []
     for view in db_users.possible_views:
         if view != current_view:
-            kb.append([types.KeyboardButton(text=view)])
-    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(вигляд)", one_time_keyboard=True, selective=True)
-    await message.reply(**content.as_kwargs(), reply_markup=rkm)
+            buttons.append([types.InlineKeyboardButton(text=view, callback_data=f"cb_set_view_{view}")])
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.reply(**content.as_kwargs(), reply_markup=keyboard)
+
+@dp.callback_query(F.data.startswith("cb_set_view_"))
+async def callback_set_view(callback: types.CallbackQuery):
+    new_view = callback.data.split("cb_set_view_")[-1]
+    db_users.set_new_view(user_id=callback.from_user.id, new_view=new_view)
+    content = Text(
+                Bold("🖼Новий вигляд : "), Code(new_view), "\n"
+            )
+    await callback.message.edit_text(**content.as_kwargs())
 
 @dp.message(Command('set_total'))
 async def command_set_total(message: types.Message):
     current_total = db_users.get_total(user_id=message.from_user.id)
     content = Text(
-            Bold("🧮Підсумок"), " : ", Code(current_total)
+            Bold("<Вибери новий підсумок>"), "\n",
             )
-    kb = []
-    kb.append([types.KeyboardButton(text=f"Скасувати")])
+    buttons = []
     for total in db_users.possible_totals:
         if total != current_total:
-            kb.append([types.KeyboardButton(text=total)])
-    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(вигляд)", one_time_keyboard=True, selective=True)
-    await message.reply(**content.as_kwargs(), reply_markup=rkm)
+            buttons.append([types.InlineKeyboardButton(text=total, callback_data=f"cb_set_total_{total}")])
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.reply(**content.as_kwargs(), reply_markup=keyboard)
+
+@dp.callback_query(F.data.startswith("cb_set_total_"))
+async def callback_set_total(callback: types.CallbackQuery):
+    new_total = callback.data.split("cb_set_total_")[-1]
+    db_users.set_new_total(user_id=callback.from_user.id, new_total=new_total)
+    content = Text(
+                Bold("🧮Новий підсумок : "), Code(new_total), "\n"
+            )
+    await callback.message.edit_text(**content.as_kwargs())
 
 @dp.message(Command('today'))
 async def command_today(message: types.Message):
@@ -339,6 +356,7 @@ async def command_tomorrow(message: types.Message):
         await message.answer(**content.as_kwargs())
     else:
         content += Text(  
+                "\n",
                 Italic("<графік відсутній>"), "\n"
                 )
         await message.answer(**content.as_kwargs())
@@ -357,12 +375,6 @@ async def text_message(message: types.Message):
             db_users.remove_group(user_id=message.from_user.id, num_to_remove=txt[1])
             await message.reply(**content.as_kwargs())
             await command_remove_group(message=message)
-        case txt if txt in db_users.possible_views:
-            db_users.set_new_view(user_id=message.from_user.id, new_view=txt)
-            await command_set_view(message=message)
-        case txt if txt in db_users.possible_totals:
-            db_users.set_new_total(user_id=message.from_user.id, new_total=txt)
-            await command_set_total(message=message)
         case txt if txt in ["Скасувати"]:
             content = Text(
                     "❌",
@@ -371,9 +383,19 @@ async def text_message(message: types.Message):
         case _:
             pass
 
+async def db_updater():
+    while True:
+        DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
+        for day_name, groups in DAYS.items():
+            db_days.add_day(day_name=day_name, groups=groups)
+        time.sleep(10)
+
+
 async def main():
     dp.startup.register(on_startup)
+    await db_updater()
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
