@@ -42,6 +42,20 @@ class DB_Users(DB):
         cursor.close()
         connection.close()
 
+    def get_all_auto_send_users(self, auto_send_value:int)->list:
+        result = None
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+
+        result = cursor.execute(f"SELECT user_id FROM users WHERE auto_send=:auto_send", {'auto_send':auto_send_value}).fetchall()
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+        return result
+
+
     def get_groups(self, user_id:str)->list:
         result = None
         connection = sqlite3.connect(self.db_filename)

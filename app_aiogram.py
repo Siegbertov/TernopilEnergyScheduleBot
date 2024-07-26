@@ -13,7 +13,6 @@ from datetime import datetime
 import math
 import time
 
-
 def configure():
     load_dotenv()
 
@@ -66,7 +65,8 @@ async def on_startup(bot: Bot):
     # print("БОТ ЗАПУЩЕНИЙ")
     for ADMIN_ID in ADMINS:
         txt = "🔥🎉🍾*БОТ ЗАПУЩЕНИЙ*🍾🎉🔥\n\n"
-        txt += "/update \\- _оновити графіки_"
+        txt += "/update \\- _оновити графіки_\n"
+        txt += "/my\\_test\\_command \\- _актуальна тестова команда_\n"
         await bot.send_message(chat_id=int(ADMIN_ID), text=txt, parse_mode="MarkdownV2")
 
 @dp.message(CommandStart())
@@ -87,9 +87,16 @@ async def command_start(message: types.Message):
             content += Text(
                 "\n",
                 Italic("Cпеціально для адмінів:😉"), "\n",
-                BotCommand("/update"), " - ", Italic("перевірити графіки")
+                BotCommand("/update"), " - ", Italic("перевірити графіки"), "\n",
+                BotCommand("/my_test_command"), ' - ', Italic("актуальна тестова команда"), "\n",
                 )
         await message.answer(**content.as_kwargs())
+
+@dp.message(Command('my_test_command'))
+async def command_my_test_command(message: types.Message):
+    AUTO_SEND_ON_USER_IDS = db_users.get_all_auto_send_users(auto_send_value=1)
+    for USER_ID in AUTO_SEND_ON_USER_IDS:
+        await message.reply(text=f"{int(USER_ID[0])}") 
 
 @dp.message(Command('update'))
 async def command_update(message: types.Message):
@@ -383,19 +390,9 @@ async def text_message(message: types.Message):
         case _:
             pass
 
-async def db_updater():
-    while True:
-        DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
-        for day_name, groups in DAYS.items():
-            db_days.add_day(day_name=day_name, groups=groups)
-        time.sleep(10)
-
-
 async def main():
     dp.startup.register(on_startup)
-    await db_updater()
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
