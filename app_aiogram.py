@@ -57,6 +57,7 @@ db_days = DB_Days(db_filename=DATABASE_FILENAME)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+
 async def on_startup(bot: Bot):
     # ОНОВЛЕННЯ ГРАФІКІВ
     # DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
@@ -68,6 +69,8 @@ async def on_startup(bot: Bot):
         txt += "/update \\- _оновити графіки_\n"
         txt += "/my\\_test\\_command \\- _актуальна тестова команда_\n"
         await bot.send_message(chat_id=int(ADMIN_ID), text=txt, parse_mode="MarkdownV2")
+
+dp.startup.register(on_startup)
 
 @dp.message(CommandStart())
 async def command_start(message: types.Message):
@@ -100,7 +103,7 @@ async def command_my_test_command(message: types.Message):
 
 @dp.message(Command('update'))
 async def command_update(message: types.Message):
-    if str(message.from_user.id) == str(MY_USER_ID):
+    if str(message.from_user.id) in ADMINS:
         DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
         for day_name, groups in DAYS.items():
             db_days.add_day(day_name=day_name, groups=groups)
@@ -118,7 +121,7 @@ async def command_help(message: types.Message):
     content = Text(
             Bold("Список команд:"), "\n",
             "\n",
-            BotCommand("/info"), " - ", Italic("інформація про бот"), "\n",
+            BotCommand("/info"), " - ", Italic("інформація про бота"), "\n",
             BotCommand("/settings"), " - ", Italic("перейти до налаштувань"), "\n",
             BotCommand("/today"), " - ", Italic("показати графік на сьогодні"), "\n",
             BotCommand("/tomorrow"), " - ", Italic("показати графік на завтра"), "\n",
@@ -128,7 +131,7 @@ async def command_help(message: types.Message):
 @dp.message(Command('info'))
 async def command_info(message: types.Message):
     content = Text(
-            Bold("<🆘Інформація про бот🆘>"), "\n",
+            Bold("<🆘#TODO інформація про бота🆘>"), "\n",
             "\n",
             Code("бла-бла-бла-бла"), "\n",
             Code("бла-бла-бла-бла"), "\n",
@@ -390,9 +393,22 @@ async def text_message(message: types.Message):
         case _:
             pass
 
-async def main():
-    dp.startup.register(on_startup)
+async def my_func_1():
+    while True:
+        start = time.time()
+        # updating database
+        DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
+        for day_name, groups in DAYS.items():
+            db_days.add_day(day_name=day_name, groups=groups)
+        print(f"DATABASE is UPDATED: {time.time() - start}")
+        await asyncio.sleep(60)
+
+async def my_func_2():
     await dp.start_polling(bot)
+
+async def main():
+    await asyncio.gather(my_func_1(), my_func_2())
+    
 
 if __name__ == "__main__":
     asyncio.run(main())
