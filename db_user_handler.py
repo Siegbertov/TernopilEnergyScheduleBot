@@ -7,6 +7,18 @@ class DB_Users(DB):
         self.possible_groups = [str(x) for x in range(1, 7)]
         self.possible_views = ["INLINE", "OFF_PAIRS", "ON_PAIRS"]
         self.possible_totals = ["NONE", "TOTAL_ON", "TOTAL_OFF"]
+        self.possible_emoji_off = [
+                                '🔴', '⚫', '🌑', '🌚', 
+                                '▪', '◾', '◼', '⬛',
+                                '🟥', '❤', '🖤', '🍎', 
+                                '🔻', '🪫', '🏴', '📕'
+                                ]
+        self.possible_emoji_on = [
+                                '🟢', '🟡', '🌕', '🌝', 
+                                '▫', '◽', '◻', '⬜', 
+                                '🟩', '💚', '💛', '🍏', 
+                                '⚡', '🔋', '🏳', '📗'
+                                ]
         self.__create_table()
     
     def __create_table(self)->None:
@@ -103,7 +115,7 @@ class DB_Users(DB):
         cursor.close()
         connection.close()
 
-    def set_on_emoji(self, user_id:str, new_on_emoji:str)->None:
+    def set_new_on_emoji(self, user_id:str, new_on_emoji:str)->None:
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
         cursor.execute(
@@ -113,8 +125,8 @@ class DB_Users(DB):
         connection.commit()
         cursor.close()
         connection.close()
-
-    def set_off_emoji(self, user_id:str, new_off_emoji:str)->None:
+    
+    def set_new_off_emoji(self, user_id:str, new_off_emoji:str)->None:
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
         cursor.execute(
