@@ -58,6 +58,15 @@ db_days = DB_Days(db_filename=DATABASE_FILENAME)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+async def on_startup(bot: Bot):
+    DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
+    for day_name, groups in DAYS.items():
+        db_days.add_day(day_name=day_name, groups=groups)
+    for ADMIN_ID in ADMINS:
+        txt = "🔥🎉🍾*БОТ ЗАПУЩЕНИЙ*🍾🎉🔥\n\n"
+        txt += "_Графіки оновленні_"
+        await bot.send_message(chat_id=int(ADMIN_ID), text=txt, parse_mode="MarkdownV2")
+
 @dp.message(CommandStart())
 async def command_start(message: types.Message):
     content = formatting.Text(  
@@ -102,8 +111,8 @@ async def command_help(message: types.Message):
             "\n",
             formatting.BotCommand("/info"), " - ", formatting.Italic("інформація про бот"), "\n",
             formatting.BotCommand("/settings"), " - ", formatting.Italic("перейти до налаштувань"), "\n",
-            formatting.BotCommand("/get_today"), " - ", formatting.Italic("показати графік на сьогодні"), "\n",
-            formatting.BotCommand("/get_tomorrow"), " - ", formatting.Italic("показати графік на завтра"), "\n",
+            formatting.BotCommand("/today"), " - ", formatting.Italic("показати графік на сьогодні"), "\n",
+            formatting.BotCommand("/tomorrow"), " - ", formatting.Italic("показати графік на завтра"), "\n",
             )
     await message.answer(**content.as_kwargs())
 
@@ -225,7 +234,7 @@ async def command_today(message: types.Message):
             for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
                 n, v_s, t = num_and_view_and_total_l
                 content += formatting.Text(
-                    formatting.Bold(f"\n#{n}:",'\n')
+                    formatting.Bold(f"\nГрупа #{n}:",'\n')
                 )
                 for v in v_s:
                     if v is not None:
@@ -269,7 +278,7 @@ async def command_tomorrow(message: types.Message):
             for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
                 n, v_s, t = num_and_view_and_total_l
                 content += formatting.Text(
-                    formatting.Bold(f"\n#{n}:",'\n')
+                    formatting.Bold(f"\nГрупа #{n}:",'\n')
                 )
                 for v in v_s:
                     if v is not None:
@@ -325,6 +334,7 @@ async def text_message(message: types.Message):
             pass
 
 async def main():
+    dp.startup.register(on_startup)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
