@@ -1,6 +1,5 @@
 __pycache__
 .env
-app.py
 my_tests.py
 small_db.sql
 small_db_aiogram.sql

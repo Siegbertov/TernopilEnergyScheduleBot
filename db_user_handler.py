@@ -55,7 +55,6 @@ class DB_Users(DB):
 
         return result
 
-
     def get_groups(self, user_id:str)->list:
         result = None
         connection = sqlite3.connect(self.db_filename)

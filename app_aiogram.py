@@ -13,6 +13,9 @@ from datetime import datetime
 import math
 import time
 
+# TODO refactoring
+# TODO add year to db
+
 def configure():
     load_dotenv()
 
@@ -52,7 +55,7 @@ ADMINS.append(MY_USER_ID)
 DATABASE_FILENAME = "small_db_aiogram.sql"
 db_users = DB_Users(db_filename=DATABASE_FILENAME)
 db_days = DB_Days(db_filename=DATABASE_FILENAME)
-
+DB_UPDATE_SECONDS = 60
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -97,9 +100,22 @@ async def command_start(message: types.Message):
 
 @dp.message(Command('my_test_command'))
 async def command_my_test_command(message: types.Message):
-    AUTO_SEND_ON_USER_IDS = db_users.get_all_auto_send_users(auto_send_value=1)
-    for USER_ID in AUTO_SEND_ON_USER_IDS:
-        await message.reply(text=f"{int(USER_ID[0])}") 
+    # AUTO_SEND_ON_USER_IDS = db_users.get_all_auto_send_users(auto_send_value=1)
+    # for USER_ID in AUTO_SEND_ON_USER_IDS:
+    #     await message.reply(text=f"{int(USER_ID[0])}") 
+    if str(message.from_user.id) in ADMINS:
+        DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
+        some_day_name = "25 липня"
+        DAY_25 = DAYS[some_day_name]
+        _, *db_day_list, _ = db_days.get_day(day_name=some_day_name)
+        content = Text(
+            Bold("DB:"), "\n", 
+            Italic(db_day_list), "\n",
+
+            Bold("SCRAP:"), "\n", 
+            Italic(list(DAY_25.values())), "\n",
+            )
+        await message.reply(**content.as_kwargs()) 
 
 @dp.message(Command('update'))
 async def command_update(message: types.Message):
@@ -157,7 +173,6 @@ async def command_change_auto_send(message: types.Message):
 
 @dp.message(Command('set_emoji_off'))
 async def command_set_emoji_off(message: types.Message):
-    #TODO implement set_emoji_off()
     content = Text(
             "<Вибери emoji для відключень>", "\n"
             )
@@ -175,7 +190,6 @@ async def command_set_emoji_off(message: types.Message):
 
 @dp.message(Command('set_emoji_on'))
 async def command_set_emoji_on(message: types.Message):
-    #TODO implement set_emoji_off()
     content = Text(
             "<Вибери emoji для включень>", "\n"
             )
@@ -287,7 +301,7 @@ async def command_today(message: types.Message):
     some_day = get_today_name()
     content = Text( Bold(f"Графік на {some_day}:"), "\n")
     if db_days.exists(day_name=some_day):
-        _, *some_day_groups_l = db_days.get_day(day_name=some_day)
+        _, *some_day_groups_l, _ = db_days.get_day(day_name=some_day)
         user_settings = db_users.get_user(user_id=message.from_user.id)
         _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
 
@@ -331,7 +345,7 @@ async def command_tomorrow(message: types.Message):
     some_day = get_tomorrow_name()
     content = Text( Bold(f"Графік на {some_day}:"), "\n")
     if db_days.exists(day_name=some_day):
-        _, *some_day_groups_l = db_days.get_day(day_name=some_day)
+        _, *some_day_groups_l, _ = db_days.get_day(day_name=some_day)
         user_settings = db_users.get_user(user_id=message.from_user.id)
         _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
 
@@ -395,14 +409,54 @@ async def text_message(message: types.Message):
 
 async def my_func_1():
     while True:
-        start = time.time()
+        await asyncio.sleep(delay=DB_UPDATE_SECONDS)
+        start = time.time()    
+
         # updating database
         DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
         for day_name, groups in DAYS.items():
             db_days.add_day(day_name=day_name, groups=groups)
-        print(f"DATABASE is UPDATED: {time.time() - start}")
-        await asyncio.sleep(60)
 
+        # # sending
+        NOT_DISTRIBUTED_DAYS = db_days.get_all_not_distributed_days()
+        if bool(NOT_DISTRIBUTED_DAYS):
+            AUTO_SEND_USERS = db_users.get_all_auto_send_users(auto_send_value=1)
+            for NOT_DISTRIBUTED_DAY in NOT_DISTRIBUTED_DAYS:
+                day_name, *groups, _ = NOT_DISTRIBUTED_DAY
+                for AUTO_SEND_USER in AUTO_SEND_USERS:
+                    txt = f"*Графік на {day_name}:*\n"
+                    user_settings = db_users.get_user(user_id=int(AUTO_SEND_USER[0]))
+                    _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+
+                    groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
+                    groups_d = {(k+1):v for k, v in enumerate(groups)}
+                    day = Day(name=day_name, groups=groups_d)
+                    NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
+                    if NUMS_and_VIEWS_and_TOTALS_L:
+                        for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
+                            n, v_s, t = num_and_view_and_total_l
+                            txt += f"\n*Група \\#{n}:*\n"
+                            for v in v_s:
+                                if v is not None:
+                                    current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
+                                    txt += f"`{edit_time_period(current_line)}`\n"
+                            if t is None:
+                                pass
+                            else:
+                                if t == (0, 0):
+                                    txt += f"_{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}_\n"
+                                else:
+                                    txt += f"_{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}_\n"
+                    else:
+                        txt += "\n/add\\_group \\- _добавити групу_\n"
+                    # txt = txt.replace('`', '\\`')
+                    await bot.send_message(chat_id=int(AUTO_SEND_USER[0]), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
+
+        #     # updating 
+            db_days.set_all_days_was_distributed()
+
+        print(f"Job was done for <{time.time() - start}>")
+        
 async def my_func_2():
     await dp.start_polling(bot)
 

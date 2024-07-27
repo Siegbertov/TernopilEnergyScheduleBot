@@ -63,11 +63,10 @@ def __re_search_all_inlines(text:str, pattern_r:str) -> dict:
             current_inline = f"{current_inline}+24:00"
         temp[pair] = current_inline
 
-    for x in [str(i) for i in range(1, 7)]:
-        if x not in temp.keys():
-            temp[x] = "00:00+24:00"
-
-    return temp
+    for x in range(1, 7):
+        if str(x) not in temp.keys():
+            temp[str(x)] = "00:00+24:00"
+    return dict(sorted(temp.items()))
 
 def __re_search_day_and_month(text:str, pattern_r:str) -> tuple:
     result = (None, None)
