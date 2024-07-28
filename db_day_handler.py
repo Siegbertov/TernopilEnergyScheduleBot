@@ -97,9 +97,9 @@ class DB_Days(DB):
             connection = sqlite3.connect(self.db_filename)
             cursor = connection.cursor()
             cursor.execute(
-                        f"INSERT INTO days VALUES (:day_name, :first_g, :second_g, :third_g, :fouth_g, :fifth_g, :sixth_g)", 
+                        f"INSERT INTO days VALUES (:day_name, :first_g, :second_g, :third_g, :fouth_g, :fifth_g, :sixth_g, :was_distributed)", 
                         {'day_name': day_name, 'first_g': groups['1'], 'second_g': groups['2'], 'third_g': groups['3'], 
-                        'fouth_g': groups['4'], 'fifth_g': groups['5'], 'sixth_g': groups['6']}
+                        'fouth_g': groups['4'], 'fifth_g': groups['5'], 'sixth_g': groups['6'], 'was_distributed': 0}
                                         ) 
             connection.commit()
             cursor.close()

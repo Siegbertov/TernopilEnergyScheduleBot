@@ -103,6 +103,16 @@ class DB_Users(DB):
         cursor.close()
         connection.close()
 
+    def delete_user(self, user_id:str)->None:
+        connection = sqlite3.connect(self.db_filename)
+        cursor = connection.cursor()
+
+        cursor.execute(f"DELETE FROM users WHERE user_id=:user_id", {'user_id':user_id})
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+
     def get_auto_send_status(self, user_id:str)->bool:
         result = [None]
         connection = sqlite3.connect(self.db_filename)

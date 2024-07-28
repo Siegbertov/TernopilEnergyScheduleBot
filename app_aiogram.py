@@ -4,6 +4,8 @@ import asyncio
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart
 from aiogram.utils.formatting import Text, Bold, Italic, Code, BotCommand
+from aiogram.types.error_event import ErrorEvent
+from aiogram.exceptions import AiogramError, TelegramForbiddenError
 
 from db_day_handler import DB_Days
 from db_user_handler import DB_Users
@@ -13,8 +15,13 @@ from datetime import datetime
 import math
 import time
 
-# TODO refactoring
+# TODO HUGE refactoring
 # TODO add year to db
+# TODO ASYNC requests - aiohttp - (edit scrapper)
+# TODO ASYNC DB I/O - aiosqlite - (edit db classes)
+# TODO ERROR HANDLING
+# TODO LOGGING
+# TODO adding bot to GROUP or CHAT
 
 def configure():
     load_dotenv()
@@ -25,13 +32,13 @@ def generate_settings_content(db, user_id:str):
     groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups_to_show[x-1]])
     return Text(
         Bold("📮Авторозсилка"), " : ", Code(f"{'ON' if auto_send else 'OFF'}"), "\n",
-        BotCommand("/change_auto_send"), " - ", Italic(f"{'ввімкнути' if auto_send else 'вимкнути'} авторозсилку"), "\n",
+        BotCommand("/change_auto_send"), " - ", Italic(f"{'вимкнути' if auto_send else 'ввімкнути'} авторозсилку"), "\n",
         "\n",
         Bold("🕯Емодзі відключення"), " : ", Code(f"{off_emoji}"), "\n",
-        BotCommand("/set_emoji_off"), " - ", Italic("встановитии новий emoji для відключення"), "\n",
+        BotCommand("/set_emoji_off"), " - ", Italic("встановити новий emoji для відключення"), "\n",
         "\n",
         Bold("💡Емодзі включення"), " : ", Code(f"{on_emoji}"), "\n",
-        BotCommand("/set_emoji_on"), " - ", Italic("встановитии новий emoji для включення"), "\n",
+        BotCommand("/set_emoji_on"), " - ", Italic("встановити новий emoji для включення"), "\n",
         "\n",
         Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"), "\n",
         BotCommand("/add_group"), " - ", Italic("добавити групу"), "\n",
@@ -100,27 +107,12 @@ async def command_start(message: types.Message):
 
 @dp.message(Command('my_test_command'))
 async def command_my_test_command(message: types.Message):
-    # AUTO_SEND_ON_USER_IDS = db_users.get_all_auto_send_users(auto_send_value=1)
-    # for USER_ID in AUTO_SEND_ON_USER_IDS:
-    #     await message.reply(text=f"{int(USER_ID[0])}") 
-    if str(message.from_user.id) in ADMINS:
-        DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
-        some_day_name = "25 липня"
-        DAY_25 = DAYS[some_day_name]
-        _, *db_day_list, _ = db_days.get_day(day_name=some_day_name)
-        content = Text(
-            Bold("DB:"), "\n", 
-            Italic(db_day_list), "\n",
-
-            Bold("SCRAP:"), "\n", 
-            Italic(list(DAY_25.values())), "\n",
-            )
-        await message.reply(**content.as_kwargs()) 
+    pass
 
 @dp.message(Command('update'))
 async def command_update(message: types.Message):
     if str(message.from_user.id) in ADMINS:
-        DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
+        DAYS = scrapper(link=LINK, day_month_r=r", (\d+) (\w+),?", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
         for day_name, groups in DAYS.items():
             db_days.add_day(day_name=day_name, groups=groups)
         now_time = datetime.now().strftime("%d.%m %H:%M:%S")
@@ -166,7 +158,7 @@ async def command_change_auto_send(message: types.Message):
     status = db_users.get_auto_send_status(user_id=message.from_user.id)
     content = Text(
         Bold("📮Авторозсилка"), " : ", Code(f"{'ON' if status else 'OFF'}"), "\n",
-        BotCommand("/change_auto_send"), " - ", Italic(f"{'ввімкнути' if status else 'вимкнути'} авторозсилку"), "\n",
+        BotCommand("/change_auto_send"), " - ", Italic(f"{'вимкнути' if status else  'ввімкнути'} авторозсилку"), "\n",
         "\n"
     )
     await message.reply(**content.as_kwargs())
@@ -232,8 +224,10 @@ async def command_add_group(message: types.Message):
     kb = []
     kb.append([types.KeyboardButton(text=f"Скасувати")])
     groups = db_users.get_groups(user_id=message.from_user.id)
+    second_row = []
     for group in [str(x) for x in db_users.possible_groups if not groups[int(x)-1]]:
-        kb.append([types.KeyboardButton(text=f"+{group}")])
+        second_row.append(types.KeyboardButton(text=f"+{group}"))
+    kb.append(second_row)
     rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
     await message.answer(**content.as_kwargs(), reply_markup=rkm)
 
@@ -247,8 +241,10 @@ async def command_remove_group(message: types.Message):
     kb = []
     kb.append([types.KeyboardButton(text=f"Скасувати")])
     groups = db_users.get_groups(user_id=message.from_user.id)
+    second_row = []
     for group in [str(x) for x in db_users.possible_groups if groups[int(x)-1]]:
-        kb.append([types.KeyboardButton(text=f"-{group}")])
+        second_row.append(types.KeyboardButton(text=f"-{group}"))
+    kb.append(second_row)
     rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
     await message.answer(**content.as_kwargs(), reply_markup=rkm)
 
@@ -385,6 +381,10 @@ async def command_tomorrow(message: types.Message):
                 )
         await message.answer(**content.as_kwargs())
 
+# @dp.error()
+# async def error_handler(event: ErrorEvent):
+#     match event
+
 @dp.message()
 async def text_message(message: types.Message):
     txt = message.text
@@ -409,11 +409,11 @@ async def text_message(message: types.Message):
 
 async def my_func_1():
     while True:
-        await asyncio.sleep(delay=DB_UPDATE_SECONDS)
+        
         start = time.time()    
 
         # updating database
-        DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
+        DAYS = scrapper(link=LINK, day_month_r=r", (\d+) (\w+),?", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
         for day_name, groups in DAYS.items():
             db_days.add_day(day_name=day_name, groups=groups)
 
@@ -449,13 +449,23 @@ async def my_func_1():
                                     txt += f"_{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}_\n"
                     else:
                         txt += "\n/add\\_group \\- _добавити групу_\n"
-                    # txt = txt.replace('`', '\\`')
-                    await bot.send_message(chat_id=int(AUTO_SEND_USER[0]), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
+                    txt = txt.replace('(', '\\(').replace(')', '\\)')
+                    try:
+                        await bot.send_message(chat_id=int(AUTO_SEND_USER[0]), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
+                    except Exception as e:
+                        if isinstance(e, TelegramForbiddenError):
+                            db_users.delete_user(user_id=AUTO_SEND_USER[0])
+                        else:
+                            print(e)
+                            print(f"Problem with: {AUTO_SEND_USER[0]}")
+                        
+                        
 
         #     # updating 
             db_days.set_all_days_was_distributed()
 
         print(f"Job was done for <{time.time() - start}>")
+        await asyncio.sleep(delay=DB_UPDATE_SECONDS)
         
 async def my_func_2():
     await dp.start_polling(bot)
