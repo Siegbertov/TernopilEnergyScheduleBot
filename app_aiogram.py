@@ -5,20 +5,22 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart
 from aiogram.utils.formatting import Text, Bold, Italic, Code, BotCommand
 from aiogram.types.error_event import ErrorEvent
-from aiogram.exceptions import AiogramError, TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError
 
-from db_day_handler import DB_Days
 from db_user_handler import DB_Users
 from day import Day
-from utils import edit_time_period, scrapper, get_today_name, get_tomorrow_name, pretty_time
+from utils import edit_time_period, pretty_time
+from utils import get_today_name_year, get_tomorrow_name_year
+
+from async_scrapping import scrap_current_day_month_group
+from async_day_handler import A_DB_Days
+
 from datetime import datetime
 import math
 import time
 
 # TODO HUGE refactoring
-# TODO add year to db
-# TODO ASYNC requests - aiohttp - (edit scrapper)
-# TODO ASYNC DB I/O - aiosqlite - (edit db classes)
+# TODO ASYNC DB I/O - aiosqlite - (edit db USERS)
 # TODO ERROR HANDLING
 # TODO LOGGING
 # TODO adding bot to GROUP or CHAT
@@ -52,36 +54,48 @@ def generate_settings_content(db, user_id:str):
         )
 
 configure()
-TOKEN = os.getenv('TOKEN')
-LINK = os.getenv('LINK')
 
+# ADMIN's stuff
 ADMINS = []
 MY_USER_ID = os.getenv('MY_USER_ID')
 ADMINS.append(MY_USER_ID)
 
+# DATABASE's stuff
 DATABASE_FILENAME = "small_db_aiogram.sql"
 db_users = DB_Users(db_filename=DATABASE_FILENAME)
-db_days = DB_Days(db_filename=DATABASE_FILENAME)
+a_db_days = A_DB_Days(db_filename=DATABASE_FILENAME)
 DB_UPDATE_SECONDS = 60
 
+# BOT's stuff
+TOKEN = os.getenv('TOKEN')
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# SCRAPPING's stuff
+LINK = os.getenv('LINK')
+DAY_MONTH_R = r", (\d+) (\w+),?"
+GROUP_R = r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+"
 
+# DEFAULT on_startup()
 async def on_startup(bot: Bot):
-    # ОНОВЛЕННЯ ГРАФІКІВ
-    # DAYS = scrapper(link=LINK, day_month_r=r"(\d+) (\w+),", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
-    # for day_name, groups in DAYS.items():
-    #     db_days.add_day(day_name=day_name, groups=groups)
-    # print("БОТ ЗАПУЩЕНИЙ")
+    await a_db_days.create_table()
     for ADMIN_ID in ADMINS:
         txt = "🔥🎉🍾*БОТ ЗАПУЩЕНИЙ*🍾🎉🔥\n\n"
         txt += "/update \\- _оновити графіки_\n"
+        txt += "/notify \\- _повідомити всіх_\n"
         txt += "/my\\_test\\_command \\- _актуальна тестова команда_\n"
         await bot.send_message(chat_id=int(ADMIN_ID), text=txt, parse_mode="MarkdownV2")
 
 dp.startup.register(on_startup)
 
+async def scrap_and_update()->None:
+    today_name, today_year = get_today_name_year() # FIXME delete this variable
+    tomorrow_name, tomorrow_year = get_tomorrow_name_year() # FIXME delete this variable
+    DAYS = await scrap_current_day_month_group(link=LINK, days=[tomorrow_name, today_name], day_month_r=DAY_MONTH_R, group_r=GROUP_R)
+    await a_db_days.add_day(day_name=today_name, day_year=today_year, groups=DAYS[today_name])
+    await a_db_days.add_day(day_name=tomorrow_name, day_year=tomorrow_year, groups=DAYS[tomorrow_name])
+
+# COMMANDS
 @dp.message(CommandStart())
 async def command_start(message: types.Message):
     content = Text(  
@@ -101,25 +115,41 @@ async def command_start(message: types.Message):
                 "\n",
                 Italic("Cпеціально для адмінів:😉"), "\n",
                 BotCommand("/update"), " - ", Italic("перевірити графіки"), "\n",
+                BotCommand("/notify"), " - ", Italic("повідомити всіх"), "\n",
                 BotCommand("/my_test_command"), ' - ', Italic("актуальна тестова команда"), "\n",
                 )
         await message.answer(**content.as_kwargs())
 
 @dp.message(Command('my_test_command'))
 async def command_my_test_command(message: types.Message):
-    pass
+    if str(message.from_user.id) in ADMINS:
+         rest = message.text.split("my_test_command")[-1]
+         await bot.send_message(chat_id=message.from_user.id, text=rest)
+
+@dp.message(Command('notify'))
+async def command_notify(message: types.Message):
+    if str(message.from_user.id) in ADMINS:
+        rest = message.text.split("notify")[-1]
+        if rest.strip():
+            for auto_send_user in db_users.get_all_auto_send_users(auto_send_value=1):
+                # TODO add if auto_send_user not in ADMINS
+                try:
+                    await bot.send_message(chat_id=int(auto_send_user[0]), text=rest.strip())
+                except Exception as e:
+                    if isinstance(e, TelegramForbiddenError):
+                        db_users.delete_user(user_id=auto_send_user[0])
+                    else:
+                        print(e)
+                        print(f"Problem with: {auto_send_user[0]}")
 
 @dp.message(Command('update'))
 async def command_update(message: types.Message):
     if str(message.from_user.id) in ADMINS:
-        DAYS = scrapper(link=LINK, day_month_r=r", (\d+) (\w+),?", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
-        for day_name, groups in DAYS.items():
-            db_days.add_day(day_name=day_name, groups=groups)
-        now_time = datetime.now().strftime("%d.%m %H:%M:%S")
+        await scrap_and_update()
         context = Text(
                 Bold("Графіки оновленні!"), "\n",
                 "\n",
-                Italic(f"🔄{now_time}🔄")
+                Italic(f"🔄{datetime.now().strftime("%d.%m %H:%M:%S")}🔄")
             )
         await message.answer(**context.as_kwargs())
         await message.delete()
@@ -294,15 +324,13 @@ async def callback_set_total(callback: types.CallbackQuery):
 
 @dp.message(Command('today'))
 async def command_today(message: types.Message):
-    some_day = get_today_name()
+    some_day, some_year = get_today_name_year()
     content = Text( Bold(f"Графік на {some_day}:"), "\n")
-    if db_days.exists(day_name=some_day):
-        _, *some_day_groups_l, _ = db_days.get_day(day_name=some_day)
+    if await a_db_days.exists(day_name=some_day, day_year=some_year):
+        groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
         user_settings = db_users.get_user(user_id=message.from_user.id)
-        _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
-
-        groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
-        groups_d = {(k+1):v for k, v in enumerate(some_day_groups_l)}
+        _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+        groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
         day = Day(name=some_day, groups=groups_d)
         NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
         if NUMS_and_VIEWS_and_TOTALS_L:
@@ -338,15 +366,13 @@ async def command_today(message: types.Message):
 
 @dp.message(Command('tomorrow'))
 async def command_tomorrow(message: types.Message):
-    some_day = get_tomorrow_name()
+    some_day, some_year = get_tomorrow_name_year()
     content = Text( Bold(f"Графік на {some_day}:"), "\n")
-    if db_days.exists(day_name=some_day):
-        _, *some_day_groups_l, _ = db_days.get_day(day_name=some_day)
+    if await a_db_days.exists(day_name=some_day, day_year=some_year):
+        groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
         user_settings = db_users.get_user(user_id=message.from_user.id)
-        _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
-
-        groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
-        groups_d = {(k+1):v for k, v in enumerate(some_day_groups_l)}
+        _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+        groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
         day = Day(name=some_day, groups=groups_d)
         NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
         if NUMS_and_VIEWS_and_TOTALS_L:
@@ -376,14 +402,9 @@ async def command_tomorrow(message: types.Message):
         await message.answer(**content.as_kwargs())
     else:
         content += Text(  
-                "\n",
-                Italic("<графік відсутній>"), "\n"
+                Italic("\n<графік відсутній>")
                 )
         await message.answer(**content.as_kwargs())
-
-# @dp.error()
-# async def error_handler(event: ErrorEvent):
-#     match event
 
 @dp.message()
 async def text_message(message: types.Message):
@@ -413,16 +434,14 @@ async def my_func_1():
         start = time.time()    
 
         # updating database
-        DAYS = scrapper(link=LINK, day_month_r=r", (\d+) (\w+),?", group_r=r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+")
-        for day_name, groups in DAYS.items():
-            db_days.add_day(day_name=day_name, groups=groups)
+        await scrap_and_update()
 
         # # sending
-        NOT_DISTRIBUTED_DAYS = db_days.get_all_not_distributed_days()
+        NOT_DISTRIBUTED_DAYS = await a_db_days.get_all_not_distributed_days()
         if bool(NOT_DISTRIBUTED_DAYS):
             AUTO_SEND_USERS = db_users.get_all_auto_send_users(auto_send_value=1)
             for NOT_DISTRIBUTED_DAY in NOT_DISTRIBUTED_DAYS:
-                day_name, *groups, _ = NOT_DISTRIBUTED_DAY
+                _, day_name, _,  *groups, _ = NOT_DISTRIBUTED_DAY
                 for AUTO_SEND_USER in AUTO_SEND_USERS:
                     txt = f"*Графік на {day_name}:*\n"
                     user_settings = db_users.get_user(user_id=int(AUTO_SEND_USER[0]))
@@ -462,7 +481,7 @@ async def my_func_1():
                         
 
         #     # updating 
-            db_days.set_all_days_was_distributed()
+            await a_db_days.set_all_was_distributed()
 
         print(f"Job was done for <{time.time() - start}>")
         await asyncio.sleep(delay=DB_UPDATE_SECONDS)
@@ -475,4 +494,5 @@ async def main():
     
 
 if __name__ == "__main__":
+
     asyncio.run(main())
