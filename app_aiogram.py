@@ -15,6 +15,8 @@ from async_scrapping import scrap_current_day_month_group
 from async_day_handler import A_DB_Days
 from async_user_handler import A_DB_Users
 
+import logging
+
 from datetime import datetime
 import math
 import time
@@ -24,8 +26,18 @@ import time
 # TODO HUGE refactoring
 # TODO ERROR HANDLING
 
-# LOADING ENV
+# ---------------- LOADING ENV
 load_dotenv()
+
+# SETTING UP LOGGER
+logger = logging.getLogger()
+log_console = logging.StreamHandler()
+log_console.setLevel(logging.INFO)
+logging.basicConfig(
+                level=logging.INFO, 
+                format="%(asctime)s : %(levelname)-8s : %(message)s",
+                handlers=[log_console]
+                )
 
 # ADMIN's stuff
 ADMINS = []
@@ -74,6 +86,57 @@ async def generate_settings_content(db, user_id:str):
         BotCommand("/set_total"), " - ", Italic("змінити показ підсумку")
         )
 
+async def scrap_and_update()->None:
+    today_name, today_year = get_today_name_year()
+    tomorrow_name, tomorrow_year = get_tomorrow_name_year()
+    DAYS = await scrap_current_day_month_group(link=LINK, days=[tomorrow_name, today_name], day_month_r=DAY_MONTH_R, group_r=GROUP_R)
+    await a_db_days.add_day(day_name=today_name, day_year=today_year, groups=DAYS[today_name])
+    await a_db_days.add_day(day_name=tomorrow_name, day_year=tomorrow_year, groups=DAYS[tomorrow_name])
+
+async def auto_mailing()->None:
+    NOT_DISTRIBUTED_DAYS = await a_db_days.get_all_not_distributed_days()
+    if bool(NOT_DISTRIBUTED_DAYS):
+        AUTO_SEND_USERS = await a_db_users.get_all_auto_send_users(auto_send_value=1)
+        for NOT_DISTRIBUTED_DAY in NOT_DISTRIBUTED_DAYS:
+            _, day_name, _,  *groups, _ = NOT_DISTRIBUTED_DAY
+            for AUTO_SEND_USER in AUTO_SEND_USERS:
+                txt = f"*Графік на {day_name}:*\n"
+                user_settings = await a_db_users.get_user(user_id=int(AUTO_SEND_USER))
+                _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+
+                groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
+                groups_d = {(k+1):v for k, v in enumerate(groups)}
+                day = Day(name=day_name, groups=groups_d)
+                NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
+                if NUMS_and_VIEWS_and_TOTALS_L:
+                    for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
+                        n, v_s, t = num_and_view_and_total_l
+                        txt += f"\n*Група \\#{n}:*\n"
+                        for v in v_s:
+                            if v is not None:
+                                current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
+                                txt += f"`{edit_time_period(current_line)}`\n"
+                        if t is None:
+                            pass
+                        else:
+                            if t == (0, 0):
+                                txt += f"_{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}_\n"
+                            else:
+                                txt += f"_{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}_\n"
+                else:
+                    txt += "\n/add\\_group \\- _добавити групу_\n"
+                txt = txt.replace('(', '\\(').replace(')', '\\)')
+                try:
+                    await bot.send_message(chat_id=int(AUTO_SEND_USER), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
+                except Exception as e:
+                    if isinstance(e, TelegramForbiddenError):
+                        await a_db_users.delete_user(user_id=AUTO_SEND_USER)
+                    else:
+                        print(e)
+                        print(f"Problem with: {AUTO_SEND_USER}")
+        # updating
+        await a_db_days.set_all_was_distributed()
+
 # DEFAULT on_startup()
 async def on_startup(bot: Bot):
     await a_db_days.create_table()
@@ -83,15 +146,6 @@ async def on_startup(bot: Bot):
         txt += "/notify \\- _повідомити всіх_\n"
         txt += "/my\\_test\\_command \\- _актуальна тестова команда_\n"
         await bot.send_message(chat_id=int(ADMIN_ID), text=txt, parse_mode="MarkdownV2")
-
-dp.startup.register(on_startup)
-
-async def scrap_and_update()->None:
-    today_name, today_year = get_today_name_year()
-    tomorrow_name, tomorrow_year = get_tomorrow_name_year()
-    DAYS = await scrap_current_day_month_group(link=LINK, days=[tomorrow_name, today_name], day_month_r=DAY_MONTH_R, group_r=GROUP_R)
-    await a_db_days.add_day(day_name=today_name, day_year=today_year, groups=DAYS[today_name])
-    await a_db_days.add_day(day_name=tomorrow_name, day_year=tomorrow_year, groups=DAYS[tomorrow_name])
 
 # COMMANDS
 @dp.message(CommandStart())
@@ -425,69 +479,24 @@ async def text_message(message: types.Message):
 
 async def my_func_1():
     while True:
-        
         start = time.time()    
 
         # updating database
         await scrap_and_update()
 
-        # sending # TODO make function for this
-        NOT_DISTRIBUTED_DAYS = await a_db_days.get_all_not_distributed_days()
-        if bool(NOT_DISTRIBUTED_DAYS):
-            AUTO_SEND_USERS = await a_db_users.get_all_auto_send_users(auto_send_value=1)
-            for NOT_DISTRIBUTED_DAY in NOT_DISTRIBUTED_DAYS:
-                _, day_name, _,  *groups, _ = NOT_DISTRIBUTED_DAY
-                for AUTO_SEND_USER in AUTO_SEND_USERS:
-                    txt = f"*Графік на {day_name}:*\n"
-                    user_settings = await a_db_users.get_user(user_id=int(AUTO_SEND_USER))
-                    _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+        # sending
+        await auto_mailing()
 
-                    groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
-                    groups_d = {(k+1):v for k, v in enumerate(groups)}
-                    day = Day(name=day_name, groups=groups_d)
-                    NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
-                    if NUMS_and_VIEWS_and_TOTALS_L:
-                        for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
-                            n, v_s, t = num_and_view_and_total_l
-                            txt += f"\n*Група \\#{n}:*\n"
-                            for v in v_s:
-                                if v is not None:
-                                    current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
-                                    txt += f"`{edit_time_period(current_line)}`\n"
-                            if t is None:
-                                pass
-                            else:
-                                if t == (0, 0):
-                                    txt += f"_{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}_\n"
-                                else:
-                                    txt += f"_{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}_\n"
-                    else:
-                        txt += "\n/add\\_group \\- _добавити групу_\n"
-                    txt = txt.replace('(', '\\(').replace(')', '\\)')
-                    try:
-                        await bot.send_message(chat_id=int(AUTO_SEND_USER), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
-                    except Exception as e:
-                        if isinstance(e, TelegramForbiddenError):
-                            await a_db_users.delete_user(user_id=AUTO_SEND_USER)
-                        else:
-                            print(e)
-                            print(f"Problem with: {AUTO_SEND_USER}")
-                        
-                        
-
-        #     # updating 
-            await a_db_days.set_all_was_distributed()
-
-        print(f"Job was done for <{time.time() - start}>")
+        logger.info("UPDATED : %.5f sec", (time.time() - start))
         await asyncio.sleep(delay=DB_UPDATE_SECONDS)
         
 async def my_func_2():
     await dp.start_polling(bot)
 
 async def main():
+    dp.startup.register(on_startup)
     await asyncio.gather(my_func_1(), my_func_2())
     
 
 if __name__ == "__main__":
-
     asyncio.run(main())
