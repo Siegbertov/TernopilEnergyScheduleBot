@@ -102,11 +102,11 @@ class A_DB_Users:
             result = await row.fetchone()
             return bool(result[0])
         
-    async def get_all_auto_send_users(self)->list:
+    async def get_all_auto_send_users(self, auto_send_value:int)->list:
         async with aiosqlite.connect(database=self.db_filename) as db:
             rows = await db.execute(
                 """SELECT user_id FROM users WHERE auto_send=?""",
-                (1, )
+                (auto_send_value, )
             )
             await db.commit()
             return [x[0] for x in await rows.fetchall()]
@@ -199,6 +199,7 @@ class A_DB_Users:
             await db.commit()
 
 
+
 async def main():
     FILENAME = 'TEST.sql'
     RED_APPLE_EMOJI = "🍎"
@@ -212,7 +213,7 @@ async def main():
     # print(await a_db_u.get_groups(user_id="100")) # WORKS
     # await a_db_u.change_auto_send(user_id="100") # WORKS
     # print(await a_db_u.get_auto_send_status(user_id="100")) # WORKS
-    # print(await a_db_u.get_all_auto_send_users()) # WORKS -------------------------------------?????
+    print(await a_db_u.get_all_auto_send_users()) # WORKS -------------------------------------?????
     # await a_db_u.set_new_on_emoji(user_id="100", new_on_emoji=GREEN_APPLE_EMOJI) # WORKS
     # await a_db_u.set_new_off_emoji(user_id="100", new_off_emoji=RED_APPLE_EMOJI) # WORKS
     # print( await a_db_u.get_view(user_id="100") )

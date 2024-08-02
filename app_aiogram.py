@@ -7,29 +7,50 @@ from aiogram.utils.formatting import Text, Bold, Italic, Code, BotCommand
 from aiogram.types.error_event import ErrorEvent
 from aiogram.exceptions import TelegramForbiddenError
 
-from db_user_handler import DB_Users
 from day import Day
 from utils import edit_time_period, pretty_time
 from utils import get_today_name_year, get_tomorrow_name_year
 
 from async_scrapping import scrap_current_day_month_group
 from async_day_handler import A_DB_Days
+from async_user_handler import A_DB_Users
 
 from datetime import datetime
 import math
 import time
 
-# TODO HUGE refactoring
-# TODO ASYNC DB I/O - aiosqlite - (edit db USERS)
-# TODO ERROR HANDLING
 # TODO LOGGING
-# TODO adding bot to GROUP or CHAT
+# TODO GROUP or CHAT HANDLING
+# TODO HUGE refactoring
+# TODO ERROR HANDLING
 
-def configure():
-    load_dotenv()
+# LOADING ENV
+load_dotenv()
 
-def generate_settings_content(db, user_id:str):
-    user_settings = db.get_user(user_id=user_id)
+# ADMIN's stuff
+ADMINS = []
+MY_USER_ID = os.getenv('MY_USER_ID')
+ADMINS.append(MY_USER_ID)
+
+# DATABASE's stuff
+DATABASE_FILENAME = "small_db_aiogram.sql"
+# db_users = DB_Users(db_filename=DATABASE_FILENAME)
+a_db_users = A_DB_Users(db_filename=DATABASE_FILENAME)
+a_db_days = A_DB_Days(db_filename=DATABASE_FILENAME)
+DB_UPDATE_SECONDS = 60
+
+# BOT's stuff
+TOKEN = os.getenv('TOKEN')
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+# SCRAPPING's stuff
+LINK = os.getenv('LINK')
+DAY_MONTH_R = r", (\d+) (\w+),?"
+GROUP_R = r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+"
+
+async def generate_settings_content(db, user_id:str):
+    user_settings = await db.get_user(user_id=user_id)
     _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
     groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups_to_show[x-1]])
     return Text(
@@ -53,29 +74,6 @@ def generate_settings_content(db, user_id:str):
         BotCommand("/set_total"), " - ", Italic("змінити показ підсумку")
         )
 
-configure()
-
-# ADMIN's stuff
-ADMINS = []
-MY_USER_ID = os.getenv('MY_USER_ID')
-ADMINS.append(MY_USER_ID)
-
-# DATABASE's stuff
-DATABASE_FILENAME = "small_db_aiogram.sql"
-db_users = DB_Users(db_filename=DATABASE_FILENAME)
-a_db_days = A_DB_Days(db_filename=DATABASE_FILENAME)
-DB_UPDATE_SECONDS = 60
-
-# BOT's stuff
-TOKEN = os.getenv('TOKEN')
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
-
-# SCRAPPING's stuff
-LINK = os.getenv('LINK')
-DAY_MONTH_R = r", (\d+) (\w+),?"
-GROUP_R = r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+"
-
 # DEFAULT on_startup()
 async def on_startup(bot: Bot):
     await a_db_days.create_table()
@@ -89,8 +87,8 @@ async def on_startup(bot: Bot):
 dp.startup.register(on_startup)
 
 async def scrap_and_update()->None:
-    today_name, today_year = get_today_name_year() # FIXME delete this variable
-    tomorrow_name, tomorrow_year = get_tomorrow_name_year() # FIXME delete this variable
+    today_name, today_year = get_today_name_year()
+    tomorrow_name, tomorrow_year = get_tomorrow_name_year()
     DAYS = await scrap_current_day_month_group(link=LINK, days=[tomorrow_name, today_name], day_month_r=DAY_MONTH_R, group_r=GROUP_R)
     await a_db_days.add_day(day_name=today_name, day_year=today_year, groups=DAYS[today_name])
     await a_db_days.add_day(day_name=tomorrow_name, day_year=tomorrow_year, groups=DAYS[tomorrow_name])
@@ -101,8 +99,8 @@ async def command_start(message: types.Message):
     content = Text(  
             BotCommand("/help"), " - ", Italic("список команд"), "\n",
             )
-    if not db_users.exists(user_id=message.from_user.id): 
-        db_users.add_user(user_id=message.from_user.id)
+    if not await a_db_users.exists(user_id=message.from_user.id): 
+        await a_db_users.add_user(user_id=message.from_user.id)
         content = Text(
             "Привіт, ", Bold(message.from_user.full_name), "!👋\n",
             "\n",) + content
@@ -131,16 +129,15 @@ async def command_notify(message: types.Message):
     if str(message.from_user.id) in ADMINS:
         rest = message.text.split("notify")[-1]
         if rest.strip():
-            for auto_send_user in db_users.get_all_auto_send_users(auto_send_value=1):
-                # TODO add if auto_send_user not in ADMINS
+            for auto_send_user in await a_db_users.get_all_auto_send_users(auto_send_value=1):
                 try:
-                    await bot.send_message(chat_id=int(auto_send_user[0]), text=rest.strip())
+                    await bot.send_message(chat_id=int(auto_send_user), text=rest.strip())
                 except Exception as e:
                     if isinstance(e, TelegramForbiddenError):
-                        db_users.delete_user(user_id=auto_send_user[0])
+                        await a_db_users.delete_user(user_id=auto_send_user)
                     else:
                         print(e)
-                        print(f"Problem with: {auto_send_user[0]}")
+                        print(f"Problem with: {auto_send_user}")
 
 @dp.message(Command('update'))
 async def command_update(message: types.Message):
@@ -179,13 +176,13 @@ async def command_info(message: types.Message):
 
 @dp.message(Command('settings'))
 async def command_settings(message: types.Message):
-    user_settings_content = generate_settings_content(db=db_users, user_id=message.from_user.id)
+    user_settings_content = await generate_settings_content(db=a_db_users, user_id=message.from_user.id)
     await message.reply(**user_settings_content.as_kwargs())
 
 @dp.message(Command('change_auto_send'))
 async def command_change_auto_send(message: types.Message):
-    db_users.change_auto_send(user_id=message.from_user.id)
-    status = db_users.get_auto_send_status(user_id=message.from_user.id)
+    await a_db_users.change_auto_send(user_id=message.from_user.id)
+    status = await a_db_users.get_auto_send_status(user_id=message.from_user.id)
     content = Text(
         Bold("📮Авторозсилка"), " : ", Code(f"{'ON' if status else 'OFF'}"), "\n",
         BotCommand("/change_auto_send"), " - ", Italic(f"{'вимкнути' if status else  'ввімкнути'} авторозсилку"), "\n",
@@ -200,7 +197,7 @@ async def command_set_emoji_off(message: types.Message):
             )
     BTN_COLS = 4
     buttons = []
-    OFF_EMOJIS = db_users.possible_emoji_off
+    OFF_EMOJIS = a_db_users.POSSIBLE_OFF_EMOJIS
     for i in range(math.ceil(len(OFF_EMOJIS)/BTN_COLS)):
         current_row = []
         for emoji in OFF_EMOJIS[i*BTN_COLS : i*BTN_COLS+BTN_COLS]:
@@ -217,7 +214,7 @@ async def command_set_emoji_on(message: types.Message):
             )
     BTN_COLS = 4
     buttons = []
-    ON_EMOJIS = db_users.possible_emoji_on
+    ON_EMOJIS = a_db_users.POSSIBLE_ON_EMOJIS
     for i in range(math.ceil(len(ON_EMOJIS)/BTN_COLS)):
         current_row = []
         for emoji in ON_EMOJIS[i*BTN_COLS : i*BTN_COLS+BTN_COLS]:
@@ -232,13 +229,13 @@ async def callback_set_emoji(callback: types.CallbackQuery):
     *_, action, emoji = callback.data.split("_")
     match action:
         case "on":
-            db_users.set_new_on_emoji(user_id=callback.from_user.id, new_on_emoji=emoji)
+            await a_db_users.set_new_on_emoji(user_id=callback.from_user.id, new_on_emoji=emoji)
             content = Text(
                 Bold(f"💡Емодзі включення : {emoji}")
             )
             await callback.message.edit_text(**content.as_kwargs())
         case "off":
-            db_users.set_new_off_emoji(user_id=callback.from_user.id, new_off_emoji=emoji)
+            await a_db_users.set_new_off_emoji(user_id=callback.from_user.id, new_off_emoji=emoji)
             content = Text(
                 Bold(f"🕯Емодзі відключення : {emoji}")
             )
@@ -246,16 +243,15 @@ async def callback_set_emoji(callback: types.CallbackQuery):
 
 @dp.message(Command('add_group'))
 async def command_add_group(message: types.Message):
-    groups = db_users.get_groups(user_id=message.from_user.id)
+    groups = await a_db_users.get_groups(user_id=message.from_user.id)
     groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
     content = Text(
                 Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"), 
                 )
     kb = []
     kb.append([types.KeyboardButton(text=f"Скасувати")])
-    groups = db_users.get_groups(user_id=message.from_user.id)
     second_row = []
-    for group in [str(x) for x in db_users.possible_groups if not groups[int(x)-1]]:
+    for group in [str(x) for x in a_db_users.POSSIBLE_GROUPS if not groups[int(x)-1]]:
         second_row.append(types.KeyboardButton(text=f"+{group}"))
     kb.append(second_row)
     rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
@@ -263,16 +259,15 @@ async def command_add_group(message: types.Message):
 
 @dp.message(Command('remove_group'))
 async def command_remove_group(message: types.Message):
-    groups = db_users.get_groups(user_id=message.from_user.id)
+    groups = await a_db_users.get_groups(user_id=message.from_user.id)
     groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
     content = Text(
                 Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"), 
                 )
     kb = []
     kb.append([types.KeyboardButton(text=f"Скасувати")])
-    groups = db_users.get_groups(user_id=message.from_user.id)
     second_row = []
-    for group in [str(x) for x in db_users.possible_groups if groups[int(x)-1]]:
+    for group in [str(x) for x in a_db_users.POSSIBLE_GROUPS if groups[int(x)-1]]:
         second_row.append(types.KeyboardButton(text=f"-{group}"))
     kb.append(second_row)
     rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
@@ -280,12 +275,12 @@ async def command_remove_group(message: types.Message):
 
 @dp.message(Command('set_view'))
 async def command_set_view(message: types.Message):
-    current_view = db_users.get_view(user_id=message.from_user.id)
+    current_view = await a_db_users.get_view(user_id=message.from_user.id)
     content = Text(
             Bold("<Вибери новий вигляд>"), "\n",
             )
     buttons = []
-    for view in db_users.possible_views:
+    for view in a_db_users.POSSIBLE_VIEWS:
         if view != current_view:
             buttons.append([types.InlineKeyboardButton(text=view, callback_data=f"cb_set_view_{view}")])
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -294,7 +289,7 @@ async def command_set_view(message: types.Message):
 @dp.callback_query(F.data.startswith("cb_set_view_"))
 async def callback_set_view(callback: types.CallbackQuery):
     new_view = callback.data.split("cb_set_view_")[-1]
-    db_users.set_new_view(user_id=callback.from_user.id, new_view=new_view)
+    await a_db_users.set_new_view(user_id=callback.from_user.id, new_view=new_view)
     content = Text(
                 Bold("🖼Новий вигляд : "), Code(new_view), "\n"
             )
@@ -302,12 +297,12 @@ async def callback_set_view(callback: types.CallbackQuery):
 
 @dp.message(Command('set_total'))
 async def command_set_total(message: types.Message):
-    current_total = db_users.get_total(user_id=message.from_user.id)
+    current_total = await a_db_users.get_total(user_id=message.from_user.id)
     content = Text(
             Bold("<Вибери новий підсумок>"), "\n",
             )
     buttons = []
-    for total in db_users.possible_totals:
+    for total in a_db_users.POSSIBLE_TOTALS:
         if total != current_total:
             buttons.append([types.InlineKeyboardButton(text=total, callback_data=f"cb_set_total_{total}")])
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -316,7 +311,7 @@ async def command_set_total(message: types.Message):
 @dp.callback_query(F.data.startswith("cb_set_total_"))
 async def callback_set_total(callback: types.CallbackQuery):
     new_total = callback.data.split("cb_set_total_")[-1]
-    db_users.set_new_total(user_id=callback.from_user.id, new_total=new_total)
+    await a_db_users.set_new_total(user_id=callback.from_user.id, new_total=new_total)
     content = Text(
                 Bold("🧮Новий підсумок : "), Code(new_total), "\n"
             )
@@ -328,7 +323,7 @@ async def command_today(message: types.Message):
     content = Text( Bold(f"Графік на {some_day}:"), "\n")
     if await a_db_days.exists(day_name=some_day, day_year=some_year):
         groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
-        user_settings = db_users.get_user(user_id=message.from_user.id)
+        user_settings = await a_db_users.get_user(user_id=message.from_user.id)
         _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
         groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
         day = Day(name=some_day, groups=groups_d)
@@ -370,7 +365,7 @@ async def command_tomorrow(message: types.Message):
     content = Text( Bold(f"Графік на {some_day}:"), "\n")
     if await a_db_days.exists(day_name=some_day, day_year=some_year):
         groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
-        user_settings = db_users.get_user(user_id=message.from_user.id)
+        user_settings = await a_db_users.get_user(user_id=message.from_user.id)
         _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
         groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
         day = Day(name=some_day, groups=groups_d)
@@ -412,12 +407,12 @@ async def text_message(message: types.Message):
     match txt:
         case txt if txt in ["+1", "+2", "+3", "+4", "+5", "+6"]:
             content = Text( "✅" )
-            db_users.add_group(user_id=message.from_user.id, num_to_add=txt[1])
+            await a_db_users.add_group(user_id=message.from_user.id, num_to_add=txt[1])
             await message.reply(**content.as_kwargs())
             await command_add_group(message=message)
         case txt if txt in ["-1", "-2", "-3", "-4", "-5", "-6"]:
             content = Text( "✅" )
-            db_users.remove_group(user_id=message.from_user.id, num_to_remove=txt[1])
+            await a_db_users.remove_group(user_id=message.from_user.id, num_to_remove=txt[1])
             await message.reply(**content.as_kwargs())
             await command_remove_group(message=message)
         case txt if txt in ["Скасувати"]:
@@ -436,15 +431,15 @@ async def my_func_1():
         # updating database
         await scrap_and_update()
 
-        # # sending
+        # sending # TODO make function for this
         NOT_DISTRIBUTED_DAYS = await a_db_days.get_all_not_distributed_days()
         if bool(NOT_DISTRIBUTED_DAYS):
-            AUTO_SEND_USERS = db_users.get_all_auto_send_users(auto_send_value=1)
+            AUTO_SEND_USERS = await a_db_users.get_all_auto_send_users(auto_send_value=1)
             for NOT_DISTRIBUTED_DAY in NOT_DISTRIBUTED_DAYS:
                 _, day_name, _,  *groups, _ = NOT_DISTRIBUTED_DAY
                 for AUTO_SEND_USER in AUTO_SEND_USERS:
                     txt = f"*Графік на {day_name}:*\n"
-                    user_settings = db_users.get_user(user_id=int(AUTO_SEND_USER[0]))
+                    user_settings = await a_db_users.get_user(user_id=int(AUTO_SEND_USER))
                     _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
 
                     groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
@@ -470,13 +465,13 @@ async def my_func_1():
                         txt += "\n/add\\_group \\- _добавити групу_\n"
                     txt = txt.replace('(', '\\(').replace(')', '\\)')
                     try:
-                        await bot.send_message(chat_id=int(AUTO_SEND_USER[0]), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
+                        await bot.send_message(chat_id=int(AUTO_SEND_USER), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
                     except Exception as e:
                         if isinstance(e, TelegramForbiddenError):
-                            db_users.delete_user(user_id=AUTO_SEND_USER[0])
+                            await a_db_users.delete_user(user_id=AUTO_SEND_USER)
                         else:
                             print(e)
-                            print(f"Problem with: {AUTO_SEND_USER[0]}")
+                            print(f"Problem with: {AUTO_SEND_USER}")
                         
                         
 
