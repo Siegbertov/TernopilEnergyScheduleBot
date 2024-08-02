@@ -101,7 +101,7 @@ async def command_start(message: types.Message):
     content = Text(  
             BotCommand("/help"), " - ", Italic("список команд"), "\n",
             )
-    if not db_users.is_user_id_exists(user_id=message.from_user.id): 
+    if not db_users.exists(user_id=message.from_user.id): 
         db_users.add_user(user_id=message.from_user.id)
         content = Text(
             "Привіт, ", Bold(message.from_user.full_name), "!👋\n",

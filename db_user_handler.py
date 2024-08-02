@@ -68,7 +68,7 @@ class DB_Users(DB):
 
         return result
 
-    def is_user_id_exists(self, user_id:str)->bool:
+    def exists(self, user_id:str)->bool:
         result = None
         connection = sqlite3.connect(self.db_filename)
         cursor = connection.cursor()
