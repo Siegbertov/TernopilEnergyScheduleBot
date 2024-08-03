@@ -262,7 +262,6 @@ async def command_set_emoji_off(message: types.Message):
     for i in range(math.ceil(len(OFF_EMOJIS)/BTN_COLS)):
         current_row = []
         for emoji in OFF_EMOJIS[i*BTN_COLS : i*BTN_COLS+BTN_COLS]:
-            # await message.answer(text=f"{em}")
             current_row.append(types.InlineKeyboardButton(text=emoji, callback_data=f"cb_set_emoji_off_{emoji}"))
         buttons.append(current_row)
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -279,28 +278,10 @@ async def command_set_emoji_on(message: types.Message):
     for i in range(math.ceil(len(ON_EMOJIS)/BTN_COLS)):
         current_row = []
         for emoji in ON_EMOJIS[i*BTN_COLS : i*BTN_COLS+BTN_COLS]:
-            # await message.answer(text=f"{em}")
             current_row.append(types.InlineKeyboardButton(text=emoji, callback_data=f"cb_set_emoji_on_{emoji}"))
         buttons.append(current_row)
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons,)
     await message.reply(**content.as_kwargs(), reply_markup=keyboard)
-
-@dp.callback_query(F.data.startswith("cb_set_emoji_"))
-async def callback_set_emoji(callback: types.CallbackQuery):
-    *_, action, emoji = callback.data.split("_")
-    match action:
-        case "on":
-            await a_db_chats.set_new_on_emoji(chat_id=callback.message.chat.id, new_on_emoji=emoji)
-            content = Text(
-                Bold(f"💡Емодзі включення : {emoji}")
-            )
-            await callback.message.edit_text(**content.as_kwargs())
-        case "off":
-            await a_db_chats.set_new_off_emoji(chat_id=callback.message.chat.id, new_off_emoji=emoji)
-            content = Text(
-                Bold(f"🕯Емодзі відключення : {emoji}")
-            )
-            await callback.message.edit_text(**content.as_kwargs())
 
 @dp.message(Command('add_group'))
 async def command_add_group(message: types.Message):
@@ -310,13 +291,13 @@ async def command_add_group(message: types.Message):
                 Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"), 
                 )
     kb = []
-    kb.append([types.KeyboardButton(text=f"Скасувати")])
+    kb.append([types.InlineKeyboardButton(text="Скасувати", callback_data=f"cb_add_group_cancel")])
     second_row = []
     for group in [str(x) for x in a_db_chats.POSSIBLE_GROUPS if not groups[int(x)-1]]:
-        second_row.append(types.KeyboardButton(text=f"+{group}"))
+        second_row.append(types.InlineKeyboardButton(text=f"+{group}", callback_data=f"cb_add_group_{group}"))
     kb.append(second_row)
-    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
-    await message.reply(**content.as_kwargs(), reply_markup=rkm)
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=kb,)
+    await message.answer(**content.as_kwargs(), reply_markup=keyboard)
 
 @dp.message(Command('remove_group'))
 async def command_remove_group(message: types.Message):
@@ -326,13 +307,13 @@ async def command_remove_group(message: types.Message):
                 Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"), 
                 )
     kb = []
-    kb.append([types.KeyboardButton(text=f"Скасувати")])
+    kb.append([types.InlineKeyboardButton(text="Скасувати", callback_data=f"cb_remove_group_cancel")])
     second_row = []
     for group in [str(x) for x in a_db_chats.POSSIBLE_GROUPS if groups[int(x)-1]]:
-        second_row.append(types.KeyboardButton(text=f"-{group}"))
+        second_row.append(types.InlineKeyboardButton(text=f"-{group}", callback_data=f"cb_remove_group_{group}"))
     kb.append(second_row)
-    rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
-    await message.reply(**content.as_kwargs(), reply_markup=rkm)
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=kb,)
+    await message.answer(**content.as_kwargs(), reply_markup=keyboard)
 
 @dp.message(Command('set_view'))
 async def command_set_view(message: types.Message):
@@ -347,15 +328,6 @@ async def command_set_view(message: types.Message):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.reply(**content.as_kwargs(), reply_markup=keyboard)
 
-@dp.callback_query(F.data.startswith("cb_set_view_"))
-async def callback_set_view(callback: types.CallbackQuery):
-    new_view = callback.data.split("cb_set_view_")[-1]
-    await a_db_chats.set_new_view(chat_id=callback.message.chat.id, new_view=new_view)
-    content = Text(
-                Bold("🖼Новий вигляд : "), Code(new_view), "\n"
-            )
-    await callback.message.edit_text(**content.as_kwargs())
-
 @dp.message(Command('set_total'))
 async def command_set_total(message: types.Message):
     current_total = await a_db_chats.get_total(chat_id=message.chat.id)
@@ -368,15 +340,6 @@ async def command_set_total(message: types.Message):
             buttons.append([types.InlineKeyboardButton(text=total, callback_data=f"cb_set_total_{total}")])
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.reply(**content.as_kwargs(), reply_markup=keyboard)
-
-@dp.callback_query(F.data.startswith("cb_set_total_"))
-async def callback_set_total(callback: types.CallbackQuery):
-    new_total = callback.data.split("cb_set_total_")[-1]
-    await a_db_chats.set_new_total(chat_id=callback.message.chat.id, new_total=new_total)
-    content = Text(
-                Bold("🧮Новий підсумок : "), Code(new_total), "\n"
-            )
-    await callback.message.edit_text(**content.as_kwargs())
 
 @dp.message(Command('today'))
 async def command_today(message: types.Message):
@@ -472,27 +435,73 @@ async def command_tomorrow(message: types.Message):
 
 @dp.message()
 async def text_message(message: types.Message):
-    if message.chat.id == message.from_user.id:
-        txt = message.text
-        match txt:
-            case txt if txt in ["+1", "+2", "+3", "+4", "+5", "+6"]:
-                content = Text( "✅" )
-                await a_db_chats.add_group(chat_id=message.chat.id, num_to_add=txt[1])
-                await message.reply(**content.as_kwargs())
-                await command_add_group(message=message)
-            case txt if txt in ["-1", "-2", "-3", "-4", "-5", "-6"]:
-                content = Text( "✅" )
-                await a_db_chats.remove_group(chat_id=message.chat.id, num_to_remove=txt[1])
-                await message.reply(**content.as_kwargs())
-                await command_remove_group(message=message)
-            case txt if txt in ["Скасувати"]:
-                content = Text(
-                        "❌",
-                        )
-                await message.reply(**content.as_kwargs(), reply_markup=types.ReplyKeyboardRemove())
-            case _:
-                pass
+    pass
 
+# CALLBACKS
+@dp.callback_query(F.data.startswith("cb_set_emoji_"))
+async def callback_set_emoji(callback: types.CallbackQuery):
+    *_, action, emoji = callback.data.split("_")
+    match action:
+        case "on":
+            await a_db_chats.set_new_on_emoji(chat_id=callback.message.chat.id, new_on_emoji=emoji)
+            content = Text(
+                Bold(f"💡Емодзі включення : {emoji}")
+            )
+            await callback.message.edit_text(**content.as_kwargs())
+        case "off":
+            await a_db_chats.set_new_off_emoji(chat_id=callback.message.chat.id, new_off_emoji=emoji)
+            content = Text(
+                Bold(f"🕯Емодзі відключення : {emoji}")
+            )
+            await callback.message.edit_text(**content.as_kwargs())
+
+@dp.callback_query(F.data.startswith("cb_add_group_"))
+async def callback_set_emoji(callback: types.CallbackQuery):
+    end_cb = callback.data.split("_")[-1]
+    match end_cb:
+        case 'cancel':
+            groups = await a_db_chats.get_groups(chat_id=callback.message.chat.id)
+            groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
+            content = Text(Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"))
+            await callback.message.edit_text(**content.as_kwargs())
+        case end_cb if end_cb in [str(i) for i in range(1, 7)]:
+            await a_db_chats.add_group(chat_id=callback.message.chat.id, num_to_add=end_cb)
+            await callback.message.delete()
+            await command_add_group(message=callback.message)            
+
+@dp.callback_query(F.data.startswith("cb_remove_group_"))
+async def callback_set_emoji(callback: types.CallbackQuery):
+    end_cb = callback.data.split("_")[-1]
+    match end_cb:
+        case 'cancel':
+            groups = await a_db_chats.get_groups(chat_id=callback.message.chat.id)
+            groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
+            content = Text(Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"))
+            await callback.message.edit_text(**content.as_kwargs())
+        case end_cb if end_cb in [str(i) for i in range(1, 7)]:
+            await a_db_chats.remove_group(chat_id=callback.message.chat.id, num_to_remove=end_cb)
+            await callback.message.delete()
+            await command_remove_group(message=callback.message)  
+
+@dp.callback_query(F.data.startswith("cb_set_view_"))
+async def callback_set_view(callback: types.CallbackQuery):
+    new_view = callback.data.split("cb_set_view_")[-1]
+    await a_db_chats.set_new_view(chat_id=callback.message.chat.id, new_view=new_view)
+    content = Text(
+                Bold("🖼Новий вигляд : "), Code(new_view), "\n"
+            )
+    await callback.message.edit_text(**content.as_kwargs())
+
+@dp.callback_query(F.data.startswith("cb_set_total_"))
+async def callback_set_total(callback: types.CallbackQuery):
+    new_total = callback.data.split("cb_set_total_")[-1]
+    await a_db_chats.set_new_total(chat_id=callback.message.chat.id, new_total=new_total)
+    content = Text(
+                Bold("🧮Новий підсумок : "), Code(new_total), "\n"
+            )
+    await callback.message.edit_text(**content.as_kwargs())
+
+# MAIN FUNCTIONS
 async def my_func_1():
     while True:
         start = time.time()    
@@ -513,6 +522,5 @@ async def main():
     dp.startup.register(on_startup)
     await asyncio.gather(my_func_1(), my_func_2())
     
-
 if __name__ == "__main__":
     asyncio.run(main())
