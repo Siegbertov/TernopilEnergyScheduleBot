@@ -128,7 +128,8 @@ async def auto_mailing()->None:
                 txt = txt.replace('(', '\\(').replace(')', '\\)')
                 try:
                     await bot.send_message(chat_id=int(AUTO_SEND_CHAT), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
-                    # logger.info("%s : AUTOSEND : %s", day_name, AUTO_SEND_CHAT)
+                    asyncio.sleep(delay=0.5)
+                    logger.info("AUTOSEND : DAY :%s : CHAT_ID : %s", day_name, AUTO_SEND_CHAT) # FIXME mb exception
                 except Exception as e:
                     if isinstance(e, TelegramForbiddenError):
                         await a_db_chats.delete_chat(chat_id=AUTO_SEND_CHAT)
@@ -297,7 +298,7 @@ async def command_add_group(message: types.Message):
         second_row.append(types.InlineKeyboardButton(text=f"+{group}", callback_data=f"cb_add_group_{group}"))
     kb.append(second_row)
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=kb,)
-    await message.answer(**content.as_kwargs(), reply_markup=keyboard)
+    await message.reply(**content.as_kwargs(), reply_markup=keyboard)
 
 @dp.message(Command('remove_group'))
 async def command_remove_group(message: types.Message):
@@ -313,7 +314,7 @@ async def command_remove_group(message: types.Message):
         second_row.append(types.InlineKeyboardButton(text=f"-{group}", callback_data=f"cb_remove_group_{group}"))
     kb.append(second_row)
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=kb,)
-    await message.answer(**content.as_kwargs(), reply_markup=keyboard)
+    await message.reply(**content.as_kwargs(), reply_markup=keyboard)
 
 @dp.message(Command('set_view'))
 async def command_set_view(message: types.Message):
@@ -376,12 +377,12 @@ async def command_today(message: types.Message):
                 "\n", 
                 BotCommand("/add_group"), " - ", Italic("добавити групу"), "\n"
                 )
-        await message.answer(**content.as_kwargs())
+        await message.reply(**content.as_kwargs())
     else:
         content += Text(  
                 Italic("<графік відсутній>"), "\n"
                 )
-        await message.answer(**content.as_kwargs())
+        await message.reply(**content.as_kwargs())
     if message.chat.id == message.from_user.id:
             logger.info("CMD_TODAY : USER_ID : %d", message.from_user.id)
     else:
@@ -422,12 +423,12 @@ async def command_tomorrow(message: types.Message):
                 "\n", 
                 BotCommand("/add_group"), " - ", Italic("добавити групу"), "\n"
                 )
-        await message.answer(**content.as_kwargs())
+        await message.reply(**content.as_kwargs())
     else:
         content += Text(  
                 Italic("\n<графік відсутній>")
                 )
-        await message.answer(**content.as_kwargs())
+        await message.reply(**content.as_kwargs())
     if message.chat.id == message.from_user.id:
             logger.info("CMD_TOMORROW : USER_ID : %d", message.from_user.id)
     else:
@@ -465,9 +466,18 @@ async def callback_set_emoji(callback: types.CallbackQuery):
             content = Text(Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"))
             await callback.message.edit_text(**content.as_kwargs())
         case end_cb if end_cb in [str(i) for i in range(1, 7)]:
-            await a_db_chats.add_group(chat_id=callback.message.chat.id, num_to_add=end_cb)
-            await callback.message.delete()
-            await command_add_group(message=callback.message)            
+            await a_db_chats.add_group(chat_id=callback.message.chat.id, num_to_add=end_cb)     
+            groups = await a_db_chats.get_groups(chat_id=callback.message.chat.id)
+            groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
+            content = Text(Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"))
+            kb = []
+            kb.append([types.InlineKeyboardButton(text="Скасувати", callback_data=f"cb_add_group_cancel")])
+            second_row = []
+            for group in [str(x) for x in a_db_chats.POSSIBLE_GROUPS if not groups[int(x)-1]]:
+                second_row.append(types.InlineKeyboardButton(text=f"+{group}", callback_data=f"cb_add_group_{group}"))
+            kb.append(second_row)
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=kb,)
+            await callback.message.edit_text(**content.as_kwargs(), reply_markup=keyboard)      
 
 @dp.callback_query(F.data.startswith("cb_remove_group_"))
 async def callback_set_emoji(callback: types.CallbackQuery):
@@ -480,8 +490,17 @@ async def callback_set_emoji(callback: types.CallbackQuery):
             await callback.message.edit_text(**content.as_kwargs())
         case end_cb if end_cb in [str(i) for i in range(1, 7)]:
             await a_db_chats.remove_group(chat_id=callback.message.chat.id, num_to_remove=end_cb)
-            await callback.message.delete()
-            await command_remove_group(message=callback.message)  
+            groups = await a_db_chats.get_groups(chat_id=callback.message.chat.id)
+            groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
+            content = Text(Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"))
+            kb = []
+            kb.append([types.InlineKeyboardButton(text="Скасувати", callback_data=f"cb_remove_group_cancel")])
+            second_row = []
+            for group in [str(x) for x in a_db_chats.POSSIBLE_GROUPS if groups[int(x)-1]]:
+                second_row.append(types.InlineKeyboardButton(text=f"-{group}", callback_data=f"cb_remove_group_{group}"))
+            kb.append(second_row)
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=kb,)
+            await callback.message.edit_text(**content.as_kwargs(), reply_markup=keyboard)       
 
 @dp.callback_query(F.data.startswith("cb_set_view_"))
 async def callback_set_view(callback: types.CallbackQuery):
