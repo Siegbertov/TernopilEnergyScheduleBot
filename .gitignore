@@ -1,5 +1,6 @@
 __pycache__
 images
+logs
 .env
 my_tests.py
 small_db.sql

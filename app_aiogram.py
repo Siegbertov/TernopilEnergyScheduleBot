@@ -31,10 +31,12 @@ load_dotenv()
 logger = logging.getLogger()
 log_console = logging.StreamHandler()
 log_console.setLevel(logging.INFO)
+log_file = logging.FileHandler(filename=f"logs/{datetime.now().strftime('%Y_%m_%d')}.log")
+log_file.setLevel(logging.INFO)
 logging.basicConfig(
                 level=logging.INFO, 
                 format="%(asctime)s : %(levelname)-8s : %(message)s",
-                handlers=[log_console]
+                handlers=[log_console, log_file]
                 )
 
 # ADMIN's stuff
@@ -96,14 +98,14 @@ async def auto_mailing()->None:
     if bool(NOT_DISTRIBUTED_DAYS):
         AUTO_SEND_CHATS = await a_db_chats.get_all_auto_send_chats(auto_send_value=1)
         for NOT_DISTRIBUTED_DAY in NOT_DISTRIBUTED_DAYS:
-            _, day_name, _,  *groups, _ = NOT_DISTRIBUTED_DAY
+            _, day_name, _,  *groups = NOT_DISTRIBUTED_DAY
             for AUTO_SEND_CHAT in AUTO_SEND_CHATS:
                 txt = f"*Графік на {day_name}:*\n"
                 user_settings = await a_db_chats.get_chat_settings(chat_id=int(AUTO_SEND_CHAT))
                 _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
 
                 groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
-                groups_d = {(k+1):v for k, v in enumerate(groups)}
+                groups_d = {num:v for num, v in enumerate(groups, start=1)}
                 day = Day(name=day_name, groups=groups_d)
                 NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
                 if NUMS_and_VIEWS_and_TOTALS_L:
@@ -126,7 +128,7 @@ async def auto_mailing()->None:
                 txt = txt.replace('(', '\\(').replace(')', '\\)')
                 try:
                     await bot.send_message(chat_id=int(AUTO_SEND_CHAT), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
-                    logger.info("%s : AUTOSEND : %s", day_name, AUTO_SEND_CHAT)
+                    # logger.info("%s : AUTOSEND : %s", day_name, AUTO_SEND_CHAT)
                 except Exception as e:
                     if isinstance(e, TelegramForbiddenError):
                         await a_db_chats.delete_chat(chat_id=AUTO_SEND_CHAT)
