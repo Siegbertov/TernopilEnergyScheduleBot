@@ -21,7 +21,7 @@ from datetime import datetime
 import math
 import time
 
-# TODO LOGGING
+# TODO LOG MORE STUFF
 # TODO GROUP or CHAT HANDLING
 # TODO HUGE refactoring
 # TODO ERROR HANDLING
@@ -128,6 +128,7 @@ async def auto_mailing()->None:
                 txt = txt.replace('(', '\\(').replace(')', '\\)')
                 try:
                     await bot.send_message(chat_id=int(AUTO_SEND_USER), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
+                    logger.info("%s : AUTOSEND : %s", day_name, AUTO_SEND_USER)
                 except Exception as e:
                     if isinstance(e, TelegramForbiddenError):
                         await a_db_users.delete_user(user_id=AUTO_SEND_USER)
@@ -412,6 +413,7 @@ async def command_today(message: types.Message):
                 Italic("<графік відсутній>"), "\n"
                 )
         await message.answer(**content.as_kwargs())
+    logger.info("CMD_TODAY : USED_ID : %d", message.from_user.id)
 
 @dp.message(Command('tomorrow'))
 async def command_tomorrow(message: types.Message):
@@ -454,6 +456,7 @@ async def command_tomorrow(message: types.Message):
                 Italic("\n<графік відсутній>")
                 )
         await message.answer(**content.as_kwargs())
+    logger.info("CMD_TOMORROW: USED_ID : %d", message.from_user.id)
 
 @dp.message()
 async def text_message(message: types.Message):
@@ -487,7 +490,7 @@ async def my_func_1():
         # sending
         await auto_mailing()
 
-        logger.info("UPDATED : %.5f sec", (time.time() - start))
+        logger.info("SCRAPPING : %.5f sec", (time.time() - start))
         await asyncio.sleep(delay=DB_UPDATE_SECONDS)
         
 async def my_func_2():
