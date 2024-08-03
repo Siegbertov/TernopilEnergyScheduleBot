@@ -13,7 +13,7 @@ from utils import get_today_name_year, get_tomorrow_name_year
 
 from async_scrapping import scrap_current_day_month_group
 from async_day_handler import A_DB_Days
-from async_user_handler import A_DB_Users
+from async_chat_handler import A_DB_Chats
 
 import logging
 
@@ -21,8 +21,6 @@ from datetime import datetime
 import math
 import time
 
-# TODO LOG MORE STUFF
-# TODO GROUP or CHAT HANDLING
 # TODO HUGE refactoring
 # TODO ERROR HANDLING
 
@@ -41,13 +39,13 @@ logging.basicConfig(
 
 # ADMIN's stuff
 ADMINS = []
-MY_USER_ID = os.getenv('MY_USER_ID')
-ADMINS.append(MY_USER_ID)
+MY_CHAT_ID = os.getenv('MY_CHAT_ID')
+ADMINS.append(MY_CHAT_ID)
 
 # DATABASE's stuff
 DATABASE_FILENAME = "small_db_aiogram.sql"
 # db_users = DB_Users(db_filename=DATABASE_FILENAME)
-a_db_users = A_DB_Users(db_filename=DATABASE_FILENAME)
+a_db_chats = A_DB_Chats(db_filename=DATABASE_FILENAME)
 a_db_days = A_DB_Days(db_filename=DATABASE_FILENAME)
 DB_UPDATE_SECONDS = 60
 
@@ -61,8 +59,8 @@ LINK = os.getenv('LINK')
 DAY_MONTH_R = r", (\d+) (\w+),?"
 GROUP_R = r"(\d\d:\d\d)-(\d\d:\d\d)\s+(\d)\s+\w+"
 
-async def generate_settings_content(db, user_id:str):
-    user_settings = await db.get_user(user_id=user_id)
+async def generate_settings_content(db, chat_id:str):
+    user_settings = await db.get_chat_settings(chat_id=chat_id)
     _, auto_send, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
     groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups_to_show[x-1]])
     return Text(
@@ -96,12 +94,12 @@ async def scrap_and_update()->None:
 async def auto_mailing()->None:
     NOT_DISTRIBUTED_DAYS = await a_db_days.get_all_not_distributed_days()
     if bool(NOT_DISTRIBUTED_DAYS):
-        AUTO_SEND_USERS = await a_db_users.get_all_auto_send_users(auto_send_value=1)
+        AUTO_SEND_CHATS = await a_db_chats.get_all_auto_send_chats(auto_send_value=1)
         for NOT_DISTRIBUTED_DAY in NOT_DISTRIBUTED_DAYS:
             _, day_name, _,  *groups, _ = NOT_DISTRIBUTED_DAY
-            for AUTO_SEND_USER in AUTO_SEND_USERS:
+            for AUTO_SEND_CHAT in AUTO_SEND_CHATS:
                 txt = f"*Графік на {day_name}:*\n"
-                user_settings = await a_db_users.get_user(user_id=int(AUTO_SEND_USER))
+                user_settings = await a_db_chats.get_chat_settings(chat_id=int(AUTO_SEND_CHAT))
                 _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
 
                 groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
@@ -127,14 +125,14 @@ async def auto_mailing()->None:
                     txt += "\n/add\\_group \\- _добавити групу_\n"
                 txt = txt.replace('(', '\\(').replace(')', '\\)')
                 try:
-                    await bot.send_message(chat_id=int(AUTO_SEND_USER), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
-                    logger.info("%s : AUTOSEND : %s", day_name, AUTO_SEND_USER)
+                    await bot.send_message(chat_id=int(AUTO_SEND_CHAT), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
+                    logger.info("%s : AUTOSEND : %s", day_name, AUTO_SEND_CHAT)
                 except Exception as e:
                     if isinstance(e, TelegramForbiddenError):
-                        await a_db_users.delete_user(user_id=AUTO_SEND_USER)
+                        await a_db_chats.delete_chat(chat_id=AUTO_SEND_CHAT)
                     else:
                         print(e)
-                        print(f"Problem with: {AUTO_SEND_USER}")
+                        print(f"Problem with: {AUTO_SEND_CHAT}")
         # updating
         await a_db_days.set_all_was_distributed()
 
@@ -154,16 +152,20 @@ async def command_start(message: types.Message):
     content = Text(  
             BotCommand("/help"), " - ", Italic("список команд"), "\n",
             )
-    if not await a_db_users.exists(user_id=message.from_user.id): 
-        await a_db_users.add_user(user_id=message.from_user.id)
+    if not await a_db_chats.exists(chat_id=message.chat.id): 
+        await a_db_chats.add_сhat(chat_id=message.chat.id)
         content = Text(
-            "Привіт, ", Bold(message.from_user.full_name), "!👋\n",
+            "Привіт, ", Bold(message.chat.full_name), "!👋\n",
             "\n",) + content
         await message.answer(**content.as_kwargs())
+        if message.chat.id == message.from_user.id:
+            logger.info("CMD_START : NEW USER_ID : %d", message.from_user.id)
+        else:
+            logger.info("CMD_START : NEW CHAT_ID : %d", message.chat.id)
     else:
         content = Text(
-            "Привіт, ", Bold(message.from_user.full_name), ", давно не бачились!😏", "\n") + content
-        if str(message.from_user.id) in ADMINS:
+            "Привіт, ", Bold(message.chat.full_name), ", давно не бачились!😏", "\n") + content
+        if str(message.chat.id) in ADMINS:
             content += Text(
                 "\n",
                 Italic("Cпеціально для адмінів:😉"), "\n",
@@ -175,28 +177,27 @@ async def command_start(message: types.Message):
 
 @dp.message(Command('my_test_command'))
 async def command_my_test_command(message: types.Message):
-    if str(message.from_user.id) in ADMINS:
-         rest = message.text.split("my_test_command")[-1]
-         await bot.send_message(chat_id=message.from_user.id, text=rest)
+    if str(message.chat.id) in ADMINS:
+         await bot.send_message(chat_id=message.chat.id, text="{}")
 
 @dp.message(Command('notify'))
 async def command_notify(message: types.Message):
-    if str(message.from_user.id) in ADMINS:
+    if str(message.chat.id) in ADMINS:
         rest = message.text.split("notify")[-1]
         if rest.strip():
-            for auto_send_user in await a_db_users.get_all_auto_send_users(auto_send_value=1):
+            for auto_send_user in await a_db_chats.get_all_auto_send_chats(auto_send_value=1):
                 try:
                     await bot.send_message(chat_id=int(auto_send_user), text=rest.strip())
                 except Exception as e:
                     if isinstance(e, TelegramForbiddenError):
-                        await a_db_users.delete_user(user_id=auto_send_user)
+                        await a_db_chats.delete_chat(chat_id=auto_send_user)
                     else:
                         print(e)
                         print(f"Problem with: {auto_send_user}")
 
 @dp.message(Command('update'))
 async def command_update(message: types.Message):
-    if str(message.from_user.id) in ADMINS:
+    if str(message.chat.id) in ADMINS:
         await scrap_and_update()
         context = Text(
                 Bold("Графіки оновленні!"), "\n",
@@ -217,6 +218,7 @@ async def command_help(message: types.Message):
             BotCommand("/tomorrow"), " - ", Italic("показати графік на завтра"), "\n",
             )
     await message.answer(**content.as_kwargs())
+    logger.info("CMD_HELP : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
 
 @dp.message(Command('info'))
 async def command_info(message: types.Message):
@@ -228,16 +230,18 @@ async def command_info(message: types.Message):
             Code("бла-бла-бла-бла"), "\n",
             )
     await message.answer(**content.as_kwargs())
+    logger.info("CMD_INFO : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
 
 @dp.message(Command('settings'))
 async def command_settings(message: types.Message):
-    user_settings_content = await generate_settings_content(db=a_db_users, user_id=message.from_user.id)
+    user_settings_content = await generate_settings_content(db=a_db_chats, chat_id=message.chat.id)
     await message.reply(**user_settings_content.as_kwargs())
+    logger.info("CMD_SETTINGS : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
 
 @dp.message(Command('change_auto_send'))
 async def command_change_auto_send(message: types.Message):
-    await a_db_users.change_auto_send(user_id=message.from_user.id)
-    status = await a_db_users.get_auto_send_status(user_id=message.from_user.id)
+    await a_db_chats.change_auto_send(chat_id=message.chat.id)
+    status = await a_db_chats.get_auto_send_status(chat_id=message.chat.id)
     content = Text(
         Bold("📮Авторозсилка"), " : ", Code(f"{'ON' if status else 'OFF'}"), "\n",
         BotCommand("/change_auto_send"), " - ", Italic(f"{'вимкнути' if status else  'ввімкнути'} авторозсилку"), "\n",
@@ -252,7 +256,7 @@ async def command_set_emoji_off(message: types.Message):
             )
     BTN_COLS = 4
     buttons = []
-    OFF_EMOJIS = a_db_users.POSSIBLE_OFF_EMOJIS
+    OFF_EMOJIS = a_db_chats.POSSIBLE_OFF_EMOJIS
     for i in range(math.ceil(len(OFF_EMOJIS)/BTN_COLS)):
         current_row = []
         for emoji in OFF_EMOJIS[i*BTN_COLS : i*BTN_COLS+BTN_COLS]:
@@ -269,7 +273,7 @@ async def command_set_emoji_on(message: types.Message):
             )
     BTN_COLS = 4
     buttons = []
-    ON_EMOJIS = a_db_users.POSSIBLE_ON_EMOJIS
+    ON_EMOJIS = a_db_chats.POSSIBLE_ON_EMOJIS
     for i in range(math.ceil(len(ON_EMOJIS)/BTN_COLS)):
         current_row = []
         for emoji in ON_EMOJIS[i*BTN_COLS : i*BTN_COLS+BTN_COLS]:
@@ -284,13 +288,13 @@ async def callback_set_emoji(callback: types.CallbackQuery):
     *_, action, emoji = callback.data.split("_")
     match action:
         case "on":
-            await a_db_users.set_new_on_emoji(user_id=callback.from_user.id, new_on_emoji=emoji)
+            await a_db_chats.set_new_on_emoji(chat_id=callback.message.chat.id, new_on_emoji=emoji)
             content = Text(
                 Bold(f"💡Емодзі включення : {emoji}")
             )
             await callback.message.edit_text(**content.as_kwargs())
         case "off":
-            await a_db_users.set_new_off_emoji(user_id=callback.from_user.id, new_off_emoji=emoji)
+            await a_db_chats.set_new_off_emoji(chat_id=callback.message.chat.id, new_off_emoji=emoji)
             content = Text(
                 Bold(f"🕯Емодзі відключення : {emoji}")
             )
@@ -298,7 +302,7 @@ async def callback_set_emoji(callback: types.CallbackQuery):
 
 @dp.message(Command('add_group'))
 async def command_add_group(message: types.Message):
-    groups = await a_db_users.get_groups(user_id=message.from_user.id)
+    groups = await a_db_chats.get_groups(chat_id=message.chat.id)
     groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
     content = Text(
                 Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"), 
@@ -306,15 +310,15 @@ async def command_add_group(message: types.Message):
     kb = []
     kb.append([types.KeyboardButton(text=f"Скасувати")])
     second_row = []
-    for group in [str(x) for x in a_db_users.POSSIBLE_GROUPS if not groups[int(x)-1]]:
+    for group in [str(x) for x in a_db_chats.POSSIBLE_GROUPS if not groups[int(x)-1]]:
         second_row.append(types.KeyboardButton(text=f"+{group}"))
     kb.append(second_row)
     rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
-    await message.answer(**content.as_kwargs(), reply_markup=rkm)
+    await message.reply(**content.as_kwargs(), reply_markup=rkm)
 
 @dp.message(Command('remove_group'))
 async def command_remove_group(message: types.Message):
-    groups = await a_db_users.get_groups(user_id=message.from_user.id)
+    groups = await a_db_chats.get_groups(chat_id=message.chat.id)
     groups_to_show_str = ", ".join([str(x) for x in range(1, 7) if groups[x-1]])
     content = Text(
                 Bold("🔠Мої групи"), " : ", Code(f"[{groups_to_show_str}]"), 
@@ -322,20 +326,20 @@ async def command_remove_group(message: types.Message):
     kb = []
     kb.append([types.KeyboardButton(text=f"Скасувати")])
     second_row = []
-    for group in [str(x) for x in a_db_users.POSSIBLE_GROUPS if groups[int(x)-1]]:
+    for group in [str(x) for x in a_db_chats.POSSIBLE_GROUPS if groups[int(x)-1]]:
         second_row.append(types.KeyboardButton(text=f"-{group}"))
     kb.append(second_row)
     rkm = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="(номер групи)", one_time_keyboard=True, selective=True)
-    await message.answer(**content.as_kwargs(), reply_markup=rkm)
+    await message.reply(**content.as_kwargs(), reply_markup=rkm)
 
 @dp.message(Command('set_view'))
 async def command_set_view(message: types.Message):
-    current_view = await a_db_users.get_view(user_id=message.from_user.id)
+    current_view = await a_db_chats.get_view(chat_id=message.chat.id)
     content = Text(
             Bold("<Вибери новий вигляд>"), "\n",
             )
     buttons = []
-    for view in a_db_users.POSSIBLE_VIEWS:
+    for view in a_db_chats.POSSIBLE_VIEWS:
         if view != current_view:
             buttons.append([types.InlineKeyboardButton(text=view, callback_data=f"cb_set_view_{view}")])
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -344,7 +348,7 @@ async def command_set_view(message: types.Message):
 @dp.callback_query(F.data.startswith("cb_set_view_"))
 async def callback_set_view(callback: types.CallbackQuery):
     new_view = callback.data.split("cb_set_view_")[-1]
-    await a_db_users.set_new_view(user_id=callback.from_user.id, new_view=new_view)
+    await a_db_chats.set_new_view(chat_id=callback.message.chat.id, new_view=new_view)
     content = Text(
                 Bold("🖼Новий вигляд : "), Code(new_view), "\n"
             )
@@ -352,12 +356,12 @@ async def callback_set_view(callback: types.CallbackQuery):
 
 @dp.message(Command('set_total'))
 async def command_set_total(message: types.Message):
-    current_total = await a_db_users.get_total(user_id=message.from_user.id)
+    current_total = await a_db_chats.get_total(chat_id=message.chat.id)
     content = Text(
             Bold("<Вибери новий підсумок>"), "\n",
             )
     buttons = []
-    for total in a_db_users.POSSIBLE_TOTALS:
+    for total in a_db_chats.POSSIBLE_TOTALS:
         if total != current_total:
             buttons.append([types.InlineKeyboardButton(text=total, callback_data=f"cb_set_total_{total}")])
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -366,7 +370,7 @@ async def command_set_total(message: types.Message):
 @dp.callback_query(F.data.startswith("cb_set_total_"))
 async def callback_set_total(callback: types.CallbackQuery):
     new_total = callback.data.split("cb_set_total_")[-1]
-    await a_db_users.set_new_total(user_id=callback.from_user.id, new_total=new_total)
+    await a_db_chats.set_new_total(chat_id=callback.message.chat.id, new_total=new_total)
     content = Text(
                 Bold("🧮Новий підсумок : "), Code(new_total), "\n"
             )
@@ -378,7 +382,7 @@ async def command_today(message: types.Message):
     content = Text( Bold(f"Графік на {some_day}:"), "\n")
     if await a_db_days.exists(day_name=some_day, day_year=some_year):
         groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
-        user_settings = await a_db_users.get_user(user_id=message.from_user.id)
+        user_settings = await a_db_chats.get_chat_settings(chat_id=message.chat.id)
         _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
         groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
         day = Day(name=some_day, groups=groups_d)
@@ -413,7 +417,10 @@ async def command_today(message: types.Message):
                 Italic("<графік відсутній>"), "\n"
                 )
         await message.answer(**content.as_kwargs())
-    logger.info("CMD_TODAY : USED_ID : %d", message.from_user.id)
+    if message.chat.id == message.from_user.id:
+            logger.info("CMD_TODAY : USER_ID : %d", message.from_user.id)
+    else:
+        logger.info("CMD_TODAY : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
 
 @dp.message(Command('tomorrow'))
 async def command_tomorrow(message: types.Message):
@@ -421,7 +428,7 @@ async def command_tomorrow(message: types.Message):
     content = Text( Bold(f"Графік на {some_day}:"), "\n")
     if await a_db_days.exists(day_name=some_day, day_year=some_year):
         groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
-        user_settings = await a_db_users.get_user(user_id=message.from_user.id)
+        user_settings = await a_db_chats.get_chat_settings(chat_id=message.chat.id)
         _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
         groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
         day = Day(name=some_day, groups=groups_d)
@@ -456,29 +463,33 @@ async def command_tomorrow(message: types.Message):
                 Italic("\n<графік відсутній>")
                 )
         await message.answer(**content.as_kwargs())
-    logger.info("CMD_TOMORROW: USED_ID : %d", message.from_user.id)
+    if message.chat.id == message.from_user.id:
+            logger.info("CMD_TOMORROW : USER_ID : %d", message.from_user.id)
+    else:
+        logger.info("CMD_TOMORROW : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
 
 @dp.message()
 async def text_message(message: types.Message):
-    txt = message.text
-    match txt:
-        case txt if txt in ["+1", "+2", "+3", "+4", "+5", "+6"]:
-            content = Text( "✅" )
-            await a_db_users.add_group(user_id=message.from_user.id, num_to_add=txt[1])
-            await message.reply(**content.as_kwargs())
-            await command_add_group(message=message)
-        case txt if txt in ["-1", "-2", "-3", "-4", "-5", "-6"]:
-            content = Text( "✅" )
-            await a_db_users.remove_group(user_id=message.from_user.id, num_to_remove=txt[1])
-            await message.reply(**content.as_kwargs())
-            await command_remove_group(message=message)
-        case txt if txt in ["Скасувати"]:
-            content = Text(
-                    "❌",
-                    )
-            await message.reply(**content.as_kwargs(), reply_markup=types.ReplyKeyboardRemove())
-        case _:
-            pass
+    if message.chat.id == message.from_user.id:
+        txt = message.text
+        match txt:
+            case txt if txt in ["+1", "+2", "+3", "+4", "+5", "+6"]:
+                content = Text( "✅" )
+                await a_db_chats.add_group(chat_id=message.chat.id, num_to_add=txt[1])
+                await message.reply(**content.as_kwargs())
+                await command_add_group(message=message)
+            case txt if txt in ["-1", "-2", "-3", "-4", "-5", "-6"]:
+                content = Text( "✅" )
+                await a_db_chats.remove_group(chat_id=message.chat.id, num_to_remove=txt[1])
+                await message.reply(**content.as_kwargs())
+                await command_remove_group(message=message)
+            case txt if txt in ["Скасувати"]:
+                content = Text(
+                        "❌",
+                        )
+                await message.reply(**content.as_kwargs(), reply_markup=types.ReplyKeyboardRemove())
+            case _:
+                pass
 
 async def my_func_1():
     while True:
