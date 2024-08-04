@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart
 from aiogram.utils.formatting import Text, Bold, Italic, Code, BotCommand
 from aiogram.types.error_event import ErrorEvent
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram import exceptions as a_e
 
 from day import Day
 from utils import edit_time_period, pretty_time
@@ -22,7 +22,7 @@ import math
 import time
 
 # TODO HUGE refactoring
-# TODO ERROR HANDLING
+# TODO SETTINGS can be changed only by OWNERS | ADMINS | USERS
 
 # ---------------- LOADING ENV
 load_dotenv()
@@ -38,6 +38,7 @@ logging.basicConfig(
                 format="%(asctime)s : %(levelname)-8s : %(message)s",
                 handlers=[log_console, log_file]
                 )
+logging.getLogger("aiogram").setLevel(logging.WARNING) # don't log aiogram INFO
 
 # ADMIN's stuff
 ADMINS = []
@@ -129,19 +130,21 @@ async def auto_mailing()->None:
                 try:
                     await bot.send_message(chat_id=int(AUTO_SEND_CHAT), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
                     asyncio.sleep(delay=0.5)
-                    logger.info("AUTOSEND : DAY :%s : CHAT_ID : %s", day_name, AUTO_SEND_CHAT) # FIXME mb exception
+                    logger.info("AUTOSEND : DAY : %s : CHAT_ID : %s", day_name, AUTO_SEND_CHAT) # FIXME mb exception
                 except Exception as e:
-                    if isinstance(e, TelegramForbiddenError):
+                    if isinstance(e, a_e.TelegramForbiddenError):
                         await a_db_chats.delete_chat(chat_id=AUTO_SEND_CHAT)
                     else:
-                        print(e)
-                        print(f"Problem with: {AUTO_SEND_CHAT}")
+                        logger.critical("AUTOSEND : NOT IMPLEMENTED ERROR : %s : REASON : %s", e, AUTO_SEND_CHAT)
+
         # updating
         await a_db_days.set_all_was_distributed()
 
 # DEFAULT on_startup()
 async def on_startup(bot: Bot):
+    logger.info("----- BOT WAS STARTED -----")
     await a_db_days.create_table()
+    await a_db_chats.create_table()
     for ADMIN_ID in ADMINS:
         txt = "🔥🎉🍾*БОТ ЗАПУЩЕНИЙ*🍾🎉🔥\n\n"
         txt += "/update \\- _оновити графіки_\n"
@@ -181,7 +184,11 @@ async def command_start(message: types.Message):
 @dp.message(Command('my_test_command'))
 async def command_my_test_command(message: types.Message):
     if str(message.chat.id) in ADMINS:
-         await bot.send_message(chat_id=message.chat.id, text="{}")
+        pass
+        # loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
+        # print(loggers)
+        # SOME_CHAT_ID = 100
+        # await bot.send_message(chat_id=SOME_CHAT_ID, text="000")
 
 @dp.message(Command('notify'))
 async def command_notify(message: types.Message):
@@ -192,11 +199,10 @@ async def command_notify(message: types.Message):
                 try:
                     await bot.send_message(chat_id=int(auto_send_user), text=rest.strip())
                 except Exception as e:
-                    if isinstance(e, TelegramForbiddenError):
+                    if isinstance(e, a_e.TelegramForbiddenError):
                         await a_db_chats.delete_chat(chat_id=auto_send_user)
                     else:
-                        print(e)
-                        print(f"Problem with: {auto_send_user}")
+                        logger.critical("CMD_NOTIFY : NOT IMPLEMENTED ERROR : %s : REASON : %s", e, auto_send_user)
 
 @dp.message(Command('update'))
 async def command_update(message: types.Message):
@@ -237,9 +243,13 @@ async def command_info(message: types.Message):
 
 @dp.message(Command('settings'))
 async def command_settings(message: types.Message):
-    user_settings_content = await generate_settings_content(db=a_db_chats, chat_id=message.chat.id)
-    await message.reply(**user_settings_content.as_kwargs())
-    logger.info("CMD_SETTINGS : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
+    if await a_db_chats.exists(chat_id=str(message.chat.id)):
+        user_settings_content = await generate_settings_content(db=a_db_chats, chat_id=message.chat.id)
+        await message.reply(**user_settings_content.as_kwargs())
+        logger.info("CMD_SETTINGS : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
+    else:
+        content = Text(Bold("Для початку запустіть бота!"))
+        await message.reply(**content.as_kwargs())
 
 @dp.message(Command('change_auto_send'))
 async def command_change_auto_send(message: types.Message):
@@ -344,99 +354,104 @@ async def command_set_total(message: types.Message):
 
 @dp.message(Command('today'))
 async def command_today(message: types.Message):
-    some_day, some_year = get_today_name_year()
-    content = Text( Bold(f"Графік на {some_day}:"), "\n")
-    if await a_db_days.exists(day_name=some_day, day_year=some_year):
-        groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
-        user_settings = await a_db_chats.get_chat_settings(chat_id=message.chat.id)
-        _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
-        groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
-        day = Day(name=some_day, groups=groups_d)
-        NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
-        if NUMS_and_VIEWS_and_TOTALS_L:
-            for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
-                n, v_s, t = num_and_view_and_total_l
-                content += Text(
-                    Bold(f"\nГрупа #{n}:",'\n')
-                )
-                for v in v_s:
-                    if v is not None:
-                        current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
-                        content += Text(
-                            Code(f"{edit_time_period(current_line)}"), "\n"
-                        )
-                if t is None:
-                    pass
-                else:
-                    if t == (0, 0):
-                        content += Text(Italic(f"{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}"), "\n")
+    if await a_db_chats.exists(chat_id=str(message.chat.id)):
+        some_day, some_year = get_today_name_year()
+        content = Text( Bold(f"Графік на {some_day}:"), "\n")
+        if await a_db_days.exists(day_name=some_day, day_year=some_year):
+            groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
+            user_settings = await a_db_chats.get_chat_settings(chat_id=message.chat.id)
+            _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+            groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
+            day = Day(name=some_day, groups=groups_d)
+            NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
+            if NUMS_and_VIEWS_and_TOTALS_L:
+                for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
+                    n, v_s, t = num_and_view_and_total_l
+                    content += Text(Bold(f"\nГрупа #{n}:",'\n'))
+                    for v in v_s:
+                        if v is not None:
+                            current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
+                            content += Text(
+                                Code(f"{edit_time_period(current_line)}"), "\n"
+                            )
+                    if t is None:
+                        pass
                     else:
-                        content += Text(Italic(f"{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}"), "\n")
+                        if t == (0, 0):
+                            content += Text(Italic(f"{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}"), "\n")
+                        else:
+                            content += Text(Italic(f"{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}"), "\n")
+            else:
+                content += Text( 
+                    "\n", 
+                    BotCommand("/add_group"), " - ", Italic("добавити групу"), "\n"
+                    )
+            await message.reply(**content.as_kwargs())
         else:
-            content += Text( 
-                "\n", 
-                BotCommand("/add_group"), " - ", Italic("добавити групу"), "\n"
-                )
-        await message.reply(**content.as_kwargs())
-    else:
-        content += Text(  
-                Italic("<графік відсутній>"), "\n"
-                )
-        await message.reply(**content.as_kwargs())
-    if message.chat.id == message.from_user.id:
+            content += Text(Italic("<графік відсутній>"), "\n")
+            await message.reply(**content.as_kwargs())
+        if message.chat.id == message.from_user.id:
             logger.info("CMD_TODAY : USER_ID : %d", message.from_user.id)
+        else:
+            logger.info("CMD_TODAY : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
     else:
-        logger.info("CMD_TODAY : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
+        content = Text(Bold("Для початку запустіть бота!"))
+        await message.reply(**content.as_kwargs())
 
 @dp.message(Command('tomorrow'))
 async def command_tomorrow(message: types.Message):
-    some_day, some_year = get_tomorrow_name_year()
-    content = Text( Bold(f"Графік на {some_day}:"), "\n")
-    if await a_db_days.exists(day_name=some_day, day_year=some_year):
-        groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
-        user_settings = await a_db_chats.get_chat_settings(chat_id=message.chat.id)
-        _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
-        groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
-        day = Day(name=some_day, groups=groups_d)
-        NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
-        if NUMS_and_VIEWS_and_TOTALS_L:
-            for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
-                n, v_s, t = num_and_view_and_total_l
-                content += Text(
-                    Bold(f"\nГрупа #{n}:",'\n')
-                )
-                for v in v_s:
-                    if v is not None:
-                        current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
-                        content += Text(
-                            Code(f"{edit_time_period(current_line)}"), "\n"
-                        )
-                if t is None:
-                    pass
-                else:
-                    if t == (0, 0):
-                        content += Text(Italic(f"{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}"), "\n")
+    if await a_db_chats.exists(chat_id=str(message.chat.id)):
+        some_day, some_year = get_tomorrow_name_year()
+        content = Text( Bold(f"Графік на {some_day}:"), "\n")
+        if await a_db_days.exists(day_name=some_day, day_year=some_year):
+            groups_d = await a_db_days.get_day_groups_as_dict(day_name=some_day, day_year=some_year)
+            user_settings = await a_db_chats.get_chat_settings(chat_id=message.chat.id)
+            _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
+            groups_to_show_l = [str(x) for x in range(1, 7) if groups_to_show[x-1]]
+            day = Day(name=some_day, groups=groups_d)
+            NUMS_and_VIEWS_and_TOTALS_L = day.get(groups_to_show=groups_to_show_l, view=view, total=total)
+            if NUMS_and_VIEWS_and_TOTALS_L:
+                for num_and_view_and_total_l in NUMS_and_VIEWS_and_TOTALS_L:
+                    n, v_s, t = num_and_view_and_total_l
+                    content += Text(
+                        Bold(f"\nГрупа #{n}:",'\n')
+                    )
+                    for v in v_s:
+                        if v is not None:
+                            current_line = v.replace(":00", "").replace("-", off_emoji).replace("+", on_emoji)
+                            content += Text(
+                                Code(f"{edit_time_period(current_line)}"), "\n"
+                            )
+                    if t is None:
+                        pass
                     else:
-                        content += Text(Italic(f"{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}"), "\n")
+                        if t == (0, 0):
+                            content += Text(Italic(f"{ '(без виключень)' if total=='TOTAL_OFF' else '(без включень)'}"), "\n")
+                        else:
+                            content += Text(Italic(f"{ f'🕯{pretty_time(t)}🕯' if total=='TOTAL_OFF' else f'💡{pretty_time(t)}💡'}"), "\n")
+            else:
+                content += Text( 
+                    "\n", 
+                    BotCommand("/add_group"), " - ", Italic("добавити групу"), "\n"
+                    )
+            await message.reply(**content.as_kwargs())
         else:
-            content += Text( 
-                "\n", 
-                BotCommand("/add_group"), " - ", Italic("добавити групу"), "\n"
-                )
-        await message.reply(**content.as_kwargs())
+            content += Text(  
+                    Italic("\n<графік відсутній>")
+                    )
+            await message.reply(**content.as_kwargs())
+        if message.chat.id == message.from_user.id:
+                logger.info("CMD_TOMORROW : USER_ID : %d", message.from_user.id)
+        else:
+            logger.info("CMD_TOMORROW : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
     else:
-        content += Text(  
-                Italic("\n<графік відсутній>")
-                )
+        content = Text(Bold("Для початку запустіть бота!"))
         await message.reply(**content.as_kwargs())
-    if message.chat.id == message.from_user.id:
-            logger.info("CMD_TOMORROW : USER_ID : %d", message.from_user.id)
-    else:
-        logger.info("CMD_TOMORROW : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
 
-@dp.message()
-async def text_message(message: types.Message):
-    pass
+# MESSAGE HANDLER
+# @dp.message()
+# async def text_message(message: types.Message):
+#     pass
 
 # CALLBACKS
 @dp.callback_query(F.data.startswith("cb_set_emoji_"))
@@ -519,6 +534,15 @@ async def callback_set_total(callback: types.CallbackQuery):
                 Bold("🧮Новий підсумок : "), Code(new_total), "\n"
             )
     await callback.message.edit_text(**content.as_kwargs())
+
+# ERRORS
+@dp.error()
+async def error_handler(event: ErrorEvent):
+    match event.exception:
+        case a_e.TelegramBadRequest():
+            logger.error("%s : FROM_CHAT_ID : %s", event.exception.message, event.update.message.chat.id)
+        case _:
+            logger.critical("NOT IMPLEMENTED ERROR : %s : REASON : %s", event.exception, event.update.message.text)
 
 # MAIN FUNCTIONS
 async def my_func_1():
