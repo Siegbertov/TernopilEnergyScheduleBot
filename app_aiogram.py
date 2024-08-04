@@ -23,6 +23,7 @@ import time
 
 # TODO HUGE refactoring
 # TODO SETTINGS can be changed only by OWNERS | ADMINS | USERS
+# TODO change auto_mailing function
 
 # ---------------- LOADING ENV
 load_dotenv()
@@ -31,7 +32,7 @@ load_dotenv()
 logger = logging.getLogger()
 log_console = logging.StreamHandler()
 log_console.setLevel(logging.INFO)
-log_file = logging.FileHandler(filename=f"logs/{datetime.now().strftime('%Y_%m_%d')}.log")
+log_file = logging.FileHandler(filename=f"logs/{datetime.now().strftime('%Y_%m_%d')}.log", encoding='utf-8')
 log_file.setLevel(logging.INFO)
 logging.basicConfig(
                 level=logging.INFO, 
@@ -47,7 +48,6 @@ ADMINS.append(MY_CHAT_ID)
 
 # DATABASE's stuff
 DATABASE_FILENAME = "small_db_aiogram.sql"
-# db_users = DB_Users(db_filename=DATABASE_FILENAME)
 a_db_chats = A_DB_Chats(db_filename=DATABASE_FILENAME)
 a_db_days = A_DB_Days(db_filename=DATABASE_FILENAME)
 DB_UPDATE_SECONDS = 60
@@ -246,7 +246,10 @@ async def command_settings(message: types.Message):
     if await a_db_chats.exists(chat_id=str(message.chat.id)):
         user_settings_content = await generate_settings_content(db=a_db_chats, chat_id=message.chat.id)
         await message.reply(**user_settings_content.as_kwargs())
-        logger.info("CMD_SETTINGS : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
+        if message.chat.id == message.from_user.id:
+            logger.info("CMD_SETTINGS : CHAT_ID : %d", message.chat.id)
+        else:
+            logger.info("CMD_SETTINGS : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
     else:
         content = Text(Bold("Для початку запустіть бота!"))
         await message.reply(**content.as_kwargs())
@@ -391,7 +394,7 @@ async def command_today(message: types.Message):
             content += Text(Italic("<графік відсутній>"), "\n")
             await message.reply(**content.as_kwargs())
         if message.chat.id == message.from_user.id:
-            logger.info("CMD_TODAY : USER_ID : %d", message.from_user.id)
+            logger.info("CMD_TODAY : CHAT_ID : %d", message.chat.id)
         else:
             logger.info("CMD_TODAY : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
     else:
@@ -441,9 +444,9 @@ async def command_tomorrow(message: types.Message):
                     )
             await message.reply(**content.as_kwargs())
         if message.chat.id == message.from_user.id:
-                logger.info("CMD_TOMORROW : USER_ID : %d", message.from_user.id)
+            logger.info("CMD_TODAY : CHAT_ID : %d", message.chat.id)
         else:
-            logger.info("CMD_TOMORROW : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
+            logger.info("CMD_TODAY : CHAT_ID : %d : USER_ID : %d", message.chat.id, message.from_user.id)
     else:
         content = Text(Bold("Для початку запустіть бота!"))
         await message.reply(**content.as_kwargs())
@@ -542,7 +545,13 @@ async def error_handler(event: ErrorEvent):
         case a_e.TelegramBadRequest():
             logger.error("%s : FROM_CHAT_ID : %s", event.exception.message, event.update.message.chat.id)
         case _:
-            logger.critical("NOT IMPLEMENTED ERROR : %s : REASON : %s", event.exception, event.update.message.text)
+            logger.critical(
+                "NOT IMPLEMENTED ERROR : %s : CHAT_ID : %s : USER_ID : %s : CMD : %s", 
+                event.exception, 
+                event.update.message.chat.id, 
+                event.update.message.from_user.id, 
+                event.update.message.text
+                )
 
 # MAIN FUNCTIONS
 async def my_func_1():
