@@ -102,14 +102,14 @@ class A_DB_Chats:
             result = await row.fetchone()
             return bool(result[0])
         
-    async def get_all_auto_send_chats(self, auto_send_value:int)->list:
+    async def get_all_auto_send_chats_settings(self, auto_send_value:int)->list:
         async with aiosqlite.connect(database=self.db_filename) as db:
             rows = await db.execute(
-                """SELECT chat_id FROM users WHERE auto_send=?""",
+                """SELECT * FROM users WHERE auto_send=?""",
                 (auto_send_value, )
             )
             await db.commit()
-            return [x[0] for x in await rows.fetchall()]
+            return await rows.fetchall()
         
     async def change_auto_send(self, chat_id:str)->None:
         async with aiosqlite.connect(database=self.db_filename) as db:
@@ -213,7 +213,7 @@ async def main():
     # print(await a_db_u.get_groups(chat_id="100")) # WORKS
     # await a_db_u.change_auto_send(chat_id="100") # WORKS
     # print(await a_db_u.get_auto_send_status(chat_id="100")) # WORKS
-    print(await a_db_u.get_all_auto_send_chats()) # WORKS -------------------------------------?????
+    print(await a_db_u.get_all_auto_send_chats_settings()) # WORKS -------------------------------------?????
     # await a_db_u.set_new_on_emoji(chat_id="100", new_on_emoji=GREEN_APPLE_EMOJI) # WORKS
     # await a_db_u.set_new_off_emoji(chat_id="100", new_off_emoji=RED_APPLE_EMOJI) # WORKS
     # print( await a_db_u.get_view(chat_id="100") )

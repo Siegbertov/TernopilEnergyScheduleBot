@@ -23,7 +23,6 @@ import time
 
 # TODO HUGE refactoring
 # TODO SETTINGS can be changed only by OWNERS | ADMINS | USERS
-# TODO change auto_mailing function
 
 # ---------------- LOADING ENV
 load_dotenv()
@@ -97,14 +96,12 @@ async def scrap_and_update()->None:
 async def auto_mailing()->None:
     NOT_DISTRIBUTED_DAYS = await a_db_days.get_all_not_distributed_days()
     if bool(NOT_DISTRIBUTED_DAYS):
-        AUTO_SEND_CHATS = await a_db_chats.get_all_auto_send_chats(auto_send_value=1)
+        AUTO_SEND_CHATS_SETTINGS = await a_db_chats.get_all_auto_send_chats_settings(auto_send_value=1)
         for NOT_DISTRIBUTED_DAY in NOT_DISTRIBUTED_DAYS:
             _, day_name, _,  *groups = NOT_DISTRIBUTED_DAY
-            for AUTO_SEND_CHAT in AUTO_SEND_CHATS:
+            for AUTO_SEND_CHAT_SETTINGS in AUTO_SEND_CHATS_SETTINGS:
                 txt = f"*Графік на {day_name}:*\n"
-                user_settings = await a_db_chats.get_chat_settings(chat_id=int(AUTO_SEND_CHAT))
-                _, _, off_emoji, on_emoji, *groups_to_show, view, total= user_settings
-
+                current_chat_id, _, off_emoji, on_emoji, *groups_to_show, view, total= AUTO_SEND_CHAT_SETTINGS
                 groups_to_show_l = [x for x in range(1, 7) if groups_to_show[x-1]]
                 groups_d = {num:v for num, v in enumerate(groups, start=1)}
                 day = Day(name=day_name, groups=groups_d)
@@ -128,18 +125,18 @@ async def auto_mailing()->None:
                     txt += "\n/add\\_group \\- _добавити групу_\n"
                 txt = txt.replace('(', '\\(').replace(')', '\\)')
                 try:
-                    await bot.send_message(chat_id=int(AUTO_SEND_CHAT), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
-                    asyncio.sleep(delay=0.5)
-                    logger.info("AUTOSEND : DAY : %s : CHAT_ID : %s", day_name, AUTO_SEND_CHAT) # FIXME mb exception
+                    await bot.send_message(chat_id=int(current_chat_id), text=txt.replace('.', '\\.'), parse_mode="MarkdownV2")
+                    # asyncio.sleep(delay=0.5) # FIXME mb delete later
+                    logger.info("AUTOSEND : DAY : %s : CHAT_ID : %s", day_name, current_chat_id)
                 except Exception as e:
                     if isinstance(e, a_e.TelegramForbiddenError):
-                        await a_db_chats.delete_chat(chat_id=AUTO_SEND_CHAT)
+                        await a_db_chats.delete_chat(chat_id=current_chat_id)
                     else:
-                        logger.critical("AUTOSEND : NOT IMPLEMENTED ERROR : %s : REASON : %s", e, AUTO_SEND_CHAT)
-
+                        logger.critical("AUTOSEND : NOT IMPLEMENTED ERROR : %s : REASON : %s", e, current_chat_id)
+            logger.info("END : AUTOSEND : DAY : %s", day_name)
         # updating
         await a_db_days.set_all_was_distributed()
-
+    
 # DEFAULT on_startup()
 async def on_startup(bot: Bot):
     logger.info("----- BOT WAS STARTED -----")
@@ -155,9 +152,7 @@ async def on_startup(bot: Bot):
 # COMMANDS
 @dp.message(CommandStart())
 async def command_start(message: types.Message):
-    content = Text(  
-            BotCommand("/help"), " - ", Italic("список команд"), "\n",
-            )
+    content = Text(BotCommand("/help"), " - ", Italic("список команд"), "\n",)
     if not await a_db_chats.exists(chat_id=message.chat.id): 
         await a_db_chats.add_сhat(chat_id=message.chat.id)
         content = Text(
@@ -195,7 +190,7 @@ async def command_notify(message: types.Message):
     if str(message.chat.id) in ADMINS:
         rest = message.text.split("notify")[-1]
         if rest.strip():
-            for auto_send_user in await a_db_chats.get_all_auto_send_chats(auto_send_value=1):
+            for auto_send_user in await a_db_chats.get_all_auto_send_chats_settings(auto_send_value=1):
                 try:
                     await bot.send_message(chat_id=int(auto_send_user), text=rest.strip())
                 except Exception as e:
