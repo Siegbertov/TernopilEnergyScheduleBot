@@ -28,10 +28,12 @@ import time
 load_dotenv()
 
 # SETTING UP LOGGER
+log_folder = "logs"
+os.makedirs(log_folder) if not os.path.exists(log_folder) else None
 logger = logging.getLogger()
 log_console = logging.StreamHandler()
 log_console.setLevel(logging.INFO)
-log_file = logging.FileHandler(filename=f"logs/{datetime.now().strftime('%Y_%m_%d')}.log", encoding='utf-8')
+log_file = logging.FileHandler(filename=f"{log_folder}/{datetime.now().strftime('%Y_%m_%d')}.log", encoding='utf-8')
 log_file.setLevel(logging.INFO)
 logging.basicConfig(
                 level=logging.INFO, 
