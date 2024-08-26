@@ -62,7 +62,7 @@ async def get_reverse_posts(link:str)->list:
 
 async def get_text_posts(link:str)->list:
     posts = await get_reverse_posts(link=link)
-    return [post.find("div", {"class": "tgme_widget_message_text"}).text for post in posts if post.find("div", {"class": "tgme_widget_message_text"} is not None)]
+    return [post.find("div", {"class": "tgme_widget_message_text"}).text for post in posts if post.find("div", {"class": "tgme_widget_message_text"})]
 
 async def scrap_current_day_month_group(link:str, days:list, day_month_r:str, group_r:str)->dict:
     temp_d = {}
