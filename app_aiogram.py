@@ -194,7 +194,7 @@ async def command_notify(message: types.Message):
         if rest.strip():
             for auto_send_user in await a_db_chats.get_all_auto_send_chats_settings(auto_send_value=1):
                 try:
-                    await bot.send_message(chat_id=int(auto_send_user), text=rest.strip())
+                    await bot.send_message(chat_id=int(auto_send_user[0]), text=rest.strip())
                 except Exception as e:
                     if isinstance(e, a_e.TelegramForbiddenError):
                         await a_db_chats.delete_chat(chat_id=auto_send_user)
