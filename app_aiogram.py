@@ -454,7 +454,7 @@ async def command_tomorrow(message: types.Message):
 async def command_perf_tomorrow(message: types.Message):
     if str(message.chat.id) in ADMINS:
         some_day, some_year = get_tomorrow_name_year()
-        groups = {k:"00:00-24:00" for k in [str(i) for i in range(1, 7)]}
+        groups = {k:"00:00+24:00" for k in [str(i) for i in range(1, 7)]}
         logger.info("CMD_PEFT_TOMORROW : CHAT_ID : %d", message.chat.id)
         await a_db_days.add_day(day_name=some_day, day_year=some_year, groups=groups)
         await message.delete()
