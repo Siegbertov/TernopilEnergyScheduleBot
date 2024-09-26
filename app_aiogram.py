@@ -148,6 +148,7 @@ async def on_startup(bot: Bot):
         txt = "🔥🎉🍾*БОТ ЗАПУЩЕНИЙ*🍾🎉🔥\n\n"
         txt += "/update \\- _оновити графіки_\n"
         txt += "/notify \\- _повідомити всіх_\n"
+        txt += "/perf\\_tomorrow \\- _ідеальний графік на завтра_\n"
         txt += "/my\\_test\\_command \\- _актуальна тестова команда_\n"
         await bot.send_message(chat_id=int(ADMIN_ID), text=txt, parse_mode="MarkdownV2")
 
@@ -174,6 +175,7 @@ async def command_start(message: types.Message):
                 Italic("Cпеціально для адмінів:😉"), "\n",
                 BotCommand("/update"), " - ", Italic("перевірити графіки"), "\n",
                 BotCommand("/notify"), " - ", Italic("повідомити всіх"), "\n",
+                BotCommand("/peft_tomorrow"), " - ", Italic("ідеальний графік на завтра"), "\n",
                 BotCommand("/my_test_command"), ' - ', Italic("актуальна тестова команда"), "\n",
                 )
         await message.answer(**content.as_kwargs())
@@ -447,6 +449,15 @@ async def command_tomorrow(message: types.Message):
     else:
         content = Text(Bold("Для початку запустіть бота!"))
         await message.reply(**content.as_kwargs())
+
+@dp.message(Command('perf_tomorrow'))
+async def command_perf_tomorrow(message: types.Message):
+    if str(message.chat.id) in ADMINS:
+        some_day, some_year = get_tomorrow_name_year()
+        groups = {k:"00:00-24:00" for k in [str(i) for i in range(1, 7)]}
+        logger.info("CMD_PEFT_TOMORROW : CHAT_ID : %d", message.chat.id)
+        await a_db_days.add_day(day_name=some_day, day_year=some_year, groups=groups)
+        await message.delete()
 
 # MESSAGE HANDLER
 # @dp.message()
